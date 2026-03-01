@@ -6,23 +6,33 @@
     "orientation": "portrait",
     "icon": "./assets/images/icon.png",
     "scheme": "fitforge",
-    "userInterfaceStyle": "automatic",
+    "userInterfaceStyle": "dark",
     "splash": {
       "image": "./assets/images/splash-icon.png",
       "resizeMode": "contain",
-      "backgroundColor": "#ffffff"
+      "backgroundColor": "#0C0C14"
     },
     "ios": {
-      "supportsTablet": true
+      "supportsTablet": false,
+      "bundleIdentifier": "co.henryseuling.fitforge",
+      "infoPlist": {
+        "NSCameraUsageDescription": "FitForge uses the camera to snap photos of meals for nutrition tracking.",
+        "NSHealthShareUsageDescription": "FitForge reads your health data to personalize workout readiness and recovery.",
+        "NSHealthUpdateUsageDescription": "FitForge writes workout data to keep your health records up to date.",
+        "ITSAppUsesNonExemptEncryption": false
+      }
     },
     "android": {
       "adaptiveIcon": {
-        "backgroundColor": "#E6F4FE",
+        "backgroundColor": "#0C0C14",
         "foregroundImage": "./assets/images/android-icon-foreground.png",
         "backgroundImage": "./assets/images/android-icon-background.png",
         "monochromeImage": "./assets/images/android-icon-monochrome.png"
       },
-      "predictiveBackGestureEnabled": false
+      "permissions": [
+        "android.permission.CAMERA",
+        "android.permission.RECORD_AUDIO"
+      ]
     },
     "web": {
       "bundler": "metro",
@@ -30,10 +40,27 @@
       "favicon": "./assets/images/favicon.png"
     },
     "plugins": [
-      "expo-router"
+      "expo-router",
+      "expo-camera",
+      "expo-secure-store",
+      [
+        "react-native-health",
+        {
+          "healthSharePermission": "FitForge reads your health data to personalize workout readiness and recovery.",
+          "healthUpdatePermission": "FitForge writes workout data to keep your health records up to date.",
+          "isClinicalDataEnabled": false
+        }
+      ],
+      "expo-font"
     ],
     "experiments": {
       "typedRoutes": true
+    },
+    "extra": {
+      "router": {},
+      "eas": {
+        "projectId": "e02df1f0-9a88-47b0-9279-d4f35705a920"
+      }
     }
   }
 }

@@ -1,57 +1,90 @@
-import { DarkTheme, DefaultTheme, ThemeProvider } from '@react-navigation/native';
-import { useFonts } from 'expo-font';
-import { Stack } from 'expo-router';
+import { useFonts, DMSans_400Regular, DMSans_500Medium, DMSans_600SemiBold, DMSans_700Bold } from '@expo-google-fonts/dm-sans';
+import { Stack, router, useSegments } from 'expo-router';
 import * as SplashScreen from 'expo-splash-screen';
 import { useEffect } from 'react';
+import { StatusBar } from 'expo-status-bar';
 import 'react-native-reanimated';
+import '../global.css';
+import { useAuthStore } from '@/stores/useAuthStore';
 
-import { useColorScheme } from '@/components/useColorScheme';
-
-export {
-  // Catch any errors thrown by the Layout component.
-  ErrorBoundary,
-} from 'expo-router';
+export { ErrorBoundary } from 'expo-router';
 
 export const unstable_settings = {
-  // Ensure that reloading on `/modal` keeps a back button present.
   initialRouteName: '(tabs)',
 };
 
-// Prevent the splash screen from auto-hiding before asset loading is complete.
 SplashScreen.preventAutoHideAsync();
+
+function useProtectedRoute() {
+  const { session, isLoading, isOnboarded } = useAuthStore();
+  const segments = useSegments();
+
+  useEffect(() => {
+    if (isLoading) return;
+
+    const inAuthScreen = segments[0] === 'login';
+    const inOnboarding = segments[0] === 'onboarding';
+
+    if (!session && !inAuthScreen) {
+      router.replace('/login');
+    } else if (session && inAuthScreen) {
+      if (!isOnboarded) {
+        router.replace('/onboarding');
+      } else {
+        router.replace('/(tabs)');
+      }
+    } else if (session && inOnboarding && isOnboarded) {
+      router.replace('/(tabs)');
+    }
+  }, [session, isLoading, isOnboarded, segments]);
+}
 
 export default function RootLayout() {
   const [loaded, error] = useFonts({
-    SpaceMono: require('../assets/fonts/SpaceMono-Regular.ttf'),
+    DMSans: DMSans_400Regular,
+    'DMSans-Medium': DMSans_500Medium,
+    'DMSans-SemiBold': DMSans_600SemiBold,
+    'DMSans-Bold': DMSans_700Bold,
+    JetBrainsMono: require('../assets/fonts/JetBrainsMono-Regular.ttf'),
+    'JetBrainsMono-Medium': require('../assets/fonts/JetBrainsMono-Medium.ttf'),
+    'JetBrainsMono-SemiBold': require('../assets/fonts/JetBrainsMono-SemiBold.ttf'),
+    'JetBrainsMono-Bold': require('../assets/fonts/JetBrainsMono-Bold.ttf'),
+    'JetBrainsMono-ExtraBold': require('../assets/fonts/JetBrainsMono-ExtraBold.ttf'),
   });
 
-  // Expo Router uses Error Boundaries to catch errors in the navigation tree.
+  const initialize = useAuthStore((s) => s.initialize);
+  const isLoading = useAuthStore((s) => s.isLoading);
+
   useEffect(() => {
     if (error) throw error;
   }, [error]);
 
   useEffect(() => {
     if (loaded) {
-      SplashScreen.hideAsync();
+      initialize();
     }
   }, [loaded]);
 
-  if (!loaded) {
-    return null;
-  }
+  useEffect(() => {
+    if (loaded && !isLoading) {
+      SplashScreen.hideAsync();
+    }
+  }, [loaded, isLoading]);
 
-  return <RootLayoutNav />;
-}
+  useProtectedRoute();
 
-function RootLayoutNav() {
-  const colorScheme = useColorScheme();
+  if (!loaded || isLoading) return null;
 
   return (
-    <ThemeProvider value={colorScheme === 'dark' ? DarkTheme : DefaultTheme}>
-      <Stack>
-        <Stack.Screen name="(tabs)" options={{ headerShown: false }} />
-        <Stack.Screen name="modal" options={{ presentation: 'modal' }} />
+    <>
+      <StatusBar style="light" />
+      <Stack screenOptions={{ headerShown: false }}>
+        <Stack.Screen name="login" />
+        <Stack.Screen name="onboarding" />
+        <Stack.Screen name="(tabs)" />
+        <Stack.Screen name="camera" options={{ presentation: 'fullScreenModal', animation: 'slide_from_bottom' }} />
+        <Stack.Screen name="edit-profile" options={{ presentation: 'modal', animation: 'slide_from_bottom' }} />
       </Stack>
-    </ThemeProvider>
+    </>
   );
 }
