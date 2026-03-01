@@ -2,6 +2,7 @@ import React, { useState } from 'react';
 import { View, Text, TextInput, Pressable, ScrollView, KeyboardAvoidingView, Platform } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { router } from 'expo-router';
+import * as Haptics from 'expo-haptics';
 import { colors } from '@/lib/theme';
 import { useUserStore } from '@/stores/useUserStore';
 import { useNutritionStore } from '@/stores/useNutritionStore';
@@ -13,6 +14,8 @@ export default function EditProfileScreen() {
   const [name, setName] = useState(user.name);
   const [height, setHeight] = useState(user.height);
   const [weight, setWeight] = useState(user.weight ? user.weight.toString() : '');
+  const [age, setAge] = useState(user.age ? user.age.toString() : '');
+  const [gender, setGender] = useState(user.gender);
   const [level, setLevel] = useState(user.level);
   const [split, setSplit] = useState(user.trainingSplit);
   const [calories, setCalories] = useState(nutrition.calorieTarget.toString());
@@ -20,12 +23,15 @@ export default function EditProfileScreen() {
 
   const LEVELS = ['Beginner', 'Intermediate', 'Advanced'];
   const SPLITS = ['3-Day Full Body', '4-Day Upper/Lower', '5-Day Rotation', '6-Day PPL'];
+  const GENDERS = ['Male', 'Female', 'Other'];
 
   const handleSave = () => {
     useUserStore.getState().updateProfile({
       name,
       height,
       weight: parseFloat(weight) || 0,
+      age: parseInt(age) || 0,
+      gender,
       level,
       trainingSplit: split,
     });
@@ -33,6 +39,7 @@ export default function EditProfileScreen() {
       calorieTarget: parseInt(calories) || 2000,
       proteinTarget: parseInt(protein) || 150,
     });
+    Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
     router.back();
   };
 
@@ -65,7 +72,7 @@ export default function EditProfileScreen() {
         {options.map((opt) => (
           <Pressable
             key={opt}
-            onPress={() => onSelect(opt)}
+            onPress={() => { onSelect(opt); Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light); }}
             style={{
               paddingVertical: 8, paddingHorizontal: 14, borderRadius: 100,
               backgroundColor: selected === opt ? colors.primary : colors.surface,
@@ -112,6 +119,16 @@ export default function EditProfileScreen() {
               <View style={{ flex: 1, gap: 6 }}>
                 <FieldLabel text="Weight (lbs)" />
                 <InputField value={weight} onChangeText={setWeight} placeholder="155" keyboardType="decimal-pad" />
+              </View>
+            </View>
+            <View style={{ flexDirection: 'row', gap: 12 }}>
+              <View style={{ flex: 1, gap: 6 }}>
+                <FieldLabel text="Age" />
+                <InputField value={age} onChangeText={setAge} placeholder="28" keyboardType="number-pad" />
+              </View>
+              <View style={{ flex: 1, gap: 6 }}>
+                <FieldLabel text="Gender" />
+                <ChipRow options={GENDERS} selected={gender} onSelect={setGender} />
               </View>
             </View>
           </View>

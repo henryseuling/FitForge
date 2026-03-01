@@ -1,7 +1,9 @@
-import React from 'react';
-import { ScrollView, View, Text, Pressable } from 'react-native';
+import React, { useState } from 'react';
+import { ScrollView, View, Text, Pressable, RefreshControl } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import Svg, { Path } from 'react-native-svg';
+import * as Haptics from 'expo-haptics';
+import { router } from 'expo-router';
 import { colors } from '@/lib/theme';
 import { useProgressStore } from '@/stores/useProgressStore';
 
@@ -147,12 +149,31 @@ function BodyMetrics() {
 }
 
 export default function ProgressScreen() {
+  const [refreshing, setRefreshing] = useState(false);
+
+  const handleRefresh = async () => {
+    setRefreshing(true);
+    await useProgressStore.getState().loadProgress();
+    setRefreshing(false);
+  };
+
   return (
     <SafeAreaView style={{ flex: 1, backgroundColor: colors.bg }}>
-      <ScrollView showsVerticalScrollIndicator={false}>
+      <ScrollView
+        showsVerticalScrollIndicator={false}
+        refreshControl={<RefreshControl refreshing={refreshing} onRefresh={handleRefresh} tintColor={colors.primary} />}
+      >
         <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', paddingHorizontal: 20, paddingTop: 16, paddingBottom: 8 }}>
           <Text style={{ fontFamily: 'DMSans-Bold', fontSize: 28, color: colors.textPrimary, letterSpacing: -0.8 }}>Progress</Text>
-          <PeriodSelector />
+          <View style={{ flexDirection: 'row', gap: 8 }}>
+            <Pressable
+              onPress={() => { Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light); router.push('/goals'); }}
+              style={{ paddingVertical: 5, paddingHorizontal: 12, borderRadius: 8, backgroundColor: colors.primaryMuted }}
+            >
+              <Text style={{ fontFamily: 'DMSans-SemiBold', fontSize: 12, color: colors.primary }}>Goals</Text>
+            </Pressable>
+            <PeriodSelector />
+          </View>
         </View>
 
         <MStrengthCard />
@@ -163,7 +184,15 @@ export default function ProgressScreen() {
           <Text style={{ fontFamily: 'DMSans', fontSize: 12, color: colors.textSecondary }}>Est. 1RM</Text>
         </View>
 
-        <KeyLiftsGrid />
+        {useProgressStore.getState().keyLifts.length === 0 ? (
+          <View style={{ marginHorizontal: 20, padding: 24, borderRadius: 16, backgroundColor: colors.surface, borderWidth: 1, borderColor: 'rgba(255,255,255,0.04)', alignItems: 'center', gap: 8 }}>
+            <Text style={{ fontFamily: 'DMSans-SemiBold', fontSize: 14, color: colors.textPrimary }}>No lift data yet</Text>
+            <Text style={{ fontFamily: 'DMSans', fontSize: 13, color: colors.textTertiary, textAlign: 'center' }}>Log your key lifts through workouts or ask your AI coach to record them.</Text>
+          </View>
+        ) : (
+          <KeyLiftsGrid />
+        )}
+
         <BodyMetrics />
 
         <View style={{ height: 20 }} />

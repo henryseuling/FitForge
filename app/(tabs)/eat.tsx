@@ -1,7 +1,8 @@
-import React from 'react';
-import { ScrollView, View, Text, Pressable, Alert } from 'react-native';
+import React, { useState } from 'react';
+import { ScrollView, View, Text, Pressable, Alert, RefreshControl } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import Svg, { Circle } from 'react-native-svg';
+import Svg, { Circle, Path } from 'react-native-svg';
+import * as Haptics from 'expo-haptics';
 import { router } from 'expo-router';
 import { colors } from '@/lib/theme';
 import { useNutritionStore } from '@/stores/useNutritionStore';
@@ -40,10 +41,51 @@ function CalorieRing() {
               <Text style={{ fontFamily: 'DMSans', fontSize: 12, color: colors.textTertiary }}>g</Text>
             </Text>
             <View style={{ width: 56, height: 5, borderRadius: 3, backgroundColor: colors.elevated, overflow: 'hidden' }}>
-              <View style={{ width: `${Math.min((m.value / m.target) * 100, 100)}%`, height: 5, borderRadius: 3, backgroundColor: m.color }} />
+              <View style={{ width: `${m.target > 0 ? Math.min((m.value / m.target) * 100, 100) : 0}%`, height: 5, borderRadius: 3, backgroundColor: m.color }} />
             </View>
           </View>
         ))}
+      </View>
+    </View>
+  );
+}
+
+function WaterTracker() {
+  const [glasses, setGlasses] = useState(0);
+  const target = 8;
+  const progress = Math.min(glasses / target, 1);
+
+  return (
+    <View style={{ marginHorizontal: 20, marginTop: 8, padding: 16, borderRadius: 16, backgroundColor: colors.surface, borderWidth: 1, borderColor: 'rgba(255,255,255,0.04)' }}>
+      <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' }}>
+        <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10 }}>
+          <View style={{ width: 32, height: 32, borderRadius: 10, backgroundColor: 'rgba(96, 165, 250, 0.12)', alignItems: 'center', justifyContent: 'center' }}>
+            <Svg width={16} height={16} viewBox="0 0 16 16" fill="none">
+              <Path d="M8 2C6 4 4 6 4 9a4 4 0 008 0c0-3-2-5-4-7z" fill="#60A5FA" />
+            </Svg>
+          </View>
+          <View>
+            <Text style={{ fontFamily: 'DMSans-SemiBold', fontSize: 14, color: colors.textPrimary }}>Water</Text>
+            <Text style={{ fontFamily: 'DMSans', fontSize: 12, color: colors.textTertiary }}>{glasses}/{target} glasses</Text>
+          </View>
+        </View>
+        <View style={{ flexDirection: 'row', gap: 8 }}>
+          <Pressable
+            onPress={() => { if (glasses > 0) { setGlasses(glasses - 1); Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light); } }}
+            style={{ width: 32, height: 32, borderRadius: 8, backgroundColor: colors.elevated, alignItems: 'center', justifyContent: 'center' }}
+          >
+            <Text style={{ fontFamily: 'DMSans-Bold', fontSize: 16, color: colors.textSecondary }}>-</Text>
+          </Pressable>
+          <Pressable
+            onPress={() => { setGlasses(glasses + 1); Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light); }}
+            style={{ width: 32, height: 32, borderRadius: 8, backgroundColor: 'rgba(96, 165, 250, 0.15)', alignItems: 'center', justifyContent: 'center' }}
+          >
+            <Text style={{ fontFamily: 'DMSans-Bold', fontSize: 16, color: '#60A5FA' }}>+</Text>
+          </Pressable>
+        </View>
+      </View>
+      <View style={{ height: 4, borderRadius: 2, backgroundColor: colors.elevated, marginTop: 12 }}>
+        <View style={{ height: 4, borderRadius: 2, backgroundColor: '#60A5FA', width: `${progress * 100}%` }} />
       </View>
     </View>
   );
@@ -57,10 +99,17 @@ function MealCard({ meal, onDelete }: { meal: any; onDelete: () => void }) {
     snack: colors.warning,
   };
   const iconColor = iconColors[meal.type] || colors.textSecondary;
+  const typeLabels: Record<string, string> = {
+    breakfast: 'Breakfast',
+    lunch: 'Lunch',
+    dinner: 'Dinner',
+    snack: 'Snack',
+  };
 
   return (
     <Pressable
       onLongPress={() => {
+        Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
         Alert.alert('Delete Meal', `Remove this ${meal.type}?`, [
           { text: 'Cancel', style: 'cancel' },
           { text: 'Delete', style: 'destructive', onPress: onDelete },
@@ -71,10 +120,10 @@ function MealCard({ meal, onDelete }: { meal: any; onDelete: () => void }) {
       <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' }}>
         <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10 }}>
           <View style={{ width: 32, height: 32, borderRadius: 10, backgroundColor: iconColor + '1A', alignItems: 'center', justifyContent: 'center' }}>
-            <Text style={{ fontSize: 14 }}>{meal.type === 'breakfast' ? '☀' : meal.type === 'lunch' ? '🍽' : '🍌'}</Text>
+            <View style={{ width: 8, height: 8, borderRadius: 4, backgroundColor: iconColor }} />
           </View>
           <View>
-            <Text style={{ fontFamily: 'DMSans-SemiBold', fontSize: 14, color: colors.textPrimary, textTransform: 'capitalize' }}>{meal.type}</Text>
+            <Text style={{ fontFamily: 'DMSans-SemiBold', fontSize: 14, color: colors.textPrimary }}>{typeLabels[meal.type] || meal.type}</Text>
             <Text style={{ fontFamily: 'DMSans', fontSize: 12, color: colors.textTertiary }}>{meal.time}</Text>
           </View>
         </View>
@@ -102,14 +151,38 @@ function MealCard({ meal, onDelete }: { meal: any; onDelete: () => void }) {
   );
 }
 
+function EmptyMeals() {
+  return (
+    <View style={{ marginHorizontal: 20, marginVertical: 8, padding: 32, borderRadius: 16, backgroundColor: colors.surface, borderWidth: 1, borderColor: 'rgba(255,255,255,0.04)', alignItems: 'center', gap: 12 }}>
+      <View style={{ width: 48, height: 48, borderRadius: 24, backgroundColor: colors.elevated, alignItems: 'center', justifyContent: 'center' }}>
+        <Svg width={24} height={24} viewBox="0 0 24 24" fill="none">
+          <Path d="M12 5v14M5 12h14" stroke={colors.textTertiary} strokeWidth={2} strokeLinecap="round" />
+        </Svg>
+      </View>
+      <Text style={{ fontFamily: 'DMSans-SemiBold', fontSize: 15, color: colors.textPrimary }}>No meals logged yet</Text>
+      <Text style={{ fontFamily: 'DMSans', fontSize: 13, color: colors.textSecondary, textAlign: 'center' }}>Snap a photo or add a meal manually to start tracking.</Text>
+    </View>
+  );
+}
+
 export default function EatScreen() {
   const { meals, remainingCalories, totalProtein, proteinTarget, removeMeal } = useNutritionStore();
   const remaining = remainingCalories();
   const proteinLeft = proteinTarget - totalProtein();
+  const [refreshing, setRefreshing] = useState(false);
+
+  const handleRefresh = async () => {
+    setRefreshing(true);
+    await useNutritionStore.getState().loadNutrition();
+    setRefreshing(false);
+  };
 
   return (
     <SafeAreaView style={{ flex: 1, backgroundColor: colors.bg }}>
-      <ScrollView showsVerticalScrollIndicator={false}>
+      <ScrollView
+        showsVerticalScrollIndicator={false}
+        refreshControl={<RefreshControl refreshing={refreshing} onRefresh={handleRefresh} tintColor={colors.primary} />}
+      >
         <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', paddingHorizontal: 20, paddingTop: 16, paddingBottom: 8 }}>
           <Text style={{ fontFamily: 'DMSans-Bold', fontSize: 28, color: colors.textPrimary, letterSpacing: -0.8 }}>Eat</Text>
           <Text style={{ fontFamily: 'DMSans', fontSize: 13, color: colors.textSecondary }}>
@@ -118,20 +191,33 @@ export default function EatScreen() {
         </View>
 
         <CalorieRing />
+        <WaterTracker />
 
         <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', paddingHorizontal: 20, paddingTop: 20, paddingBottom: 8 }}>
           <Text style={{ fontFamily: 'DMSans-SemiBold', fontSize: 16, color: colors.textPrimary }}>Today's Meals</Text>
-          <Pressable
-            onPress={() => router.push('/camera')}
-            style={{ flexDirection: 'row', alignItems: 'center', gap: 6, paddingVertical: 6, paddingHorizontal: 12, borderRadius: 100, backgroundColor: colors.primary }}
-          >
-            <Text style={{ fontFamily: 'DMSans-SemiBold', fontSize: 12, color: colors.bg }}>Snap Meal</Text>
-          </Pressable>
+          <View style={{ flexDirection: 'row', gap: 8 }}>
+            <Pressable
+              onPress={() => { Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light); router.push('/add-meal'); }}
+              style={{ flexDirection: 'row', alignItems: 'center', gap: 6, paddingVertical: 6, paddingHorizontal: 12, borderRadius: 100, backgroundColor: colors.surface, borderWidth: 1, borderColor: 'rgba(255,255,255,0.06)' }}
+            >
+              <Text style={{ fontFamily: 'DMSans-SemiBold', fontSize: 12, color: colors.textSecondary }}>+ Add</Text>
+            </Pressable>
+            <Pressable
+              onPress={() => { Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light); router.push('/camera'); }}
+              style={{ flexDirection: 'row', alignItems: 'center', gap: 6, paddingVertical: 6, paddingHorizontal: 12, borderRadius: 100, backgroundColor: colors.primary }}
+            >
+              <Text style={{ fontFamily: 'DMSans-SemiBold', fontSize: 12, color: colors.bg }}>Snap Meal</Text>
+            </Pressable>
+          </View>
         </View>
 
-        {meals.map((meal) => (
-          <MealCard key={meal.id} meal={meal} onDelete={() => removeMeal(meal.id)} />
-        ))}
+        {meals.length === 0 ? (
+          <EmptyMeals />
+        ) : (
+          meals.map((meal) => (
+            <MealCard key={meal.id} meal={meal} onDelete={() => removeMeal(meal.id)} />
+          ))
+        )}
 
         <View style={{ marginHorizontal: 20, marginTop: 8, padding: 14, paddingHorizontal: 16, borderRadius: 12, backgroundColor: 'rgba(232, 168, 56, 0.06)', borderWidth: 1, borderColor: 'rgba(232, 168, 56, 0.1)', gap: 6 }}>
           <Text style={{ fontFamily: 'DMSans-SemiBold', fontSize: 13, color: colors.primary }}>{remaining > 0 ? `${remaining.toLocaleString()} kcal remaining` : 'Calorie target reached!'}</Text>

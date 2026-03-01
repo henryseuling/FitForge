@@ -1,8 +1,9 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { ScrollView, View, Text, Pressable } from 'react-native';
+import { ScrollView, View, Text, Pressable, ActivityIndicator, RefreshControl } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import Svg, { Circle, Defs, LinearGradient, Stop, Path } from 'react-native-svg';
 import * as Haptics from 'expo-haptics';
+import { router } from 'expo-router';
 import { colors } from '@/lib/theme';
 import { useWorkoutStore } from '@/stores/useWorkoutStore';
 import { useUserStore } from '@/stores/useUserStore';
@@ -36,7 +37,7 @@ function ReadinessCard() {
               </LinearGradient>
             </Defs>
             <Circle cx={44} cy={44} r={36} fill="none" stroke={colors.elevated} strokeWidth={8} />
-            <Circle cx={44} cy={44} r={36} fill="none" stroke="url(#grad)" strokeWidth={8} strokeLinecap="round" strokeDasharray="226" strokeDashoffset={226 - (readinessScore / 100) * 226} rotation={-90} origin="44,44" />
+            <Circle cx={44} cy={44} r={36} fill="none" stroke="url(#grad)" strokeWidth={8} strokeLinecap="round" strokeDasharray="226" strokeDashoffset={226 - (Math.min(readinessScore, 100) / 100) * 226} rotation={-90} origin="44,44" />
           </Svg>
           <Text style={{ position: 'absolute', fontFamily: 'JetBrainsMono-ExtraBold', fontSize: 28, color: colors.textPrimary }}>{readinessScore}</Text>
         </View>
@@ -45,8 +46,8 @@ function ReadinessCard() {
             <View key={m.label} style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' }}>
               <Text style={{ fontFamily: 'DMSans', fontSize: 13, color: colors.textSecondary }}>{m.label}</Text>
               <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
-                <View style={{ width: 48, height: 4, borderRadius: 2, backgroundColor: m.color }} />
-                <Text style={{ fontFamily: 'JetBrainsMono-SemiBold', fontSize: 13, color: m.color, width: 24, textAlign: 'right' }}>{m.value}</Text>
+                <View style={{ width: 48, height: 4, borderRadius: 2, backgroundColor: m.value > 0 ? m.color : colors.elevated }} />
+                <Text style={{ fontFamily: 'JetBrainsMono-SemiBold', fontSize: 13, color: m.value > 0 ? m.color : colors.textTertiary, width: 24, textAlign: 'right' }}>{m.value || '—'}</Text>
               </View>
             </View>
           ))}
@@ -154,7 +155,7 @@ function EmptyWorkoutState({ onStart }: { onStart: () => void }) {
         </Text>
       </View>
       <Pressable
-        onPress={onStart}
+        onPress={() => { Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium); onStart(); }}
         style={{ paddingVertical: 14, paddingHorizontal: 32, borderRadius: 12, backgroundColor: colors.primary }}
       >
         <Text style={{ fontFamily: 'DMSans-Bold', fontSize: 15, color: colors.bg }}>Start Workout</Text>
@@ -170,18 +171,129 @@ const WORKOUT_TEMPLATES: Record<string, string[]> = {
   '6-Day PPL': ['Push', 'Pull', 'Legs', 'Push', 'Pull', 'Legs'],
 };
 
+// Default exercise templates per workout type
+const EXERCISE_TEMPLATES: Record<string, Array<{ name: string; muscleGroup: string; sets: number; repsMin: number; repsMax: number; weight: number }>> = {
+  'Full Body A': [
+    { name: 'Barbell Squat', muscleGroup: 'Legs', sets: 4, repsMin: 6, repsMax: 8, weight: 135 },
+    { name: 'Bench Press', muscleGroup: 'Chest', sets: 4, repsMin: 6, repsMax: 8, weight: 135 },
+    { name: 'Barbell Row', muscleGroup: 'Back', sets: 3, repsMin: 8, repsMax: 10, weight: 95 },
+    { name: 'Overhead Press', muscleGroup: 'Shoulders', sets: 3, repsMin: 8, repsMax: 10, weight: 65 },
+    { name: 'Bicep Curl', muscleGroup: 'Arms', sets: 3, repsMin: 10, repsMax: 12, weight: 30 },
+  ],
+  'Full Body B': [
+    { name: 'Deadlift', muscleGroup: 'Back', sets: 4, repsMin: 5, repsMax: 6, weight: 185 },
+    { name: 'Incline DB Press', muscleGroup: 'Chest', sets: 3, repsMin: 8, repsMax: 10, weight: 50 },
+    { name: 'Leg Press', muscleGroup: 'Legs', sets: 3, repsMin: 10, repsMax: 12, weight: 180 },
+    { name: 'Lat Pulldown', muscleGroup: 'Back', sets: 3, repsMin: 8, repsMax: 10, weight: 100 },
+    { name: 'Tricep Pushdown', muscleGroup: 'Arms', sets: 3, repsMin: 10, repsMax: 12, weight: 40 },
+  ],
+  'Full Body C': [
+    { name: 'Front Squat', muscleGroup: 'Legs', sets: 4, repsMin: 6, repsMax: 8, weight: 95 },
+    { name: 'Dumbbell Bench', muscleGroup: 'Chest', sets: 3, repsMin: 8, repsMax: 10, weight: 60 },
+    { name: 'Cable Row', muscleGroup: 'Back', sets: 3, repsMin: 10, repsMax: 12, weight: 80 },
+    { name: 'Lateral Raise', muscleGroup: 'Shoulders', sets: 3, repsMin: 12, repsMax: 15, weight: 15 },
+    { name: 'Leg Curl', muscleGroup: 'Legs', sets: 3, repsMin: 10, repsMax: 12, weight: 70 },
+  ],
+  'Push': [
+    { name: 'Bench Press', muscleGroup: 'Chest', sets: 4, repsMin: 6, repsMax: 8, weight: 135 },
+    { name: 'Overhead Press', muscleGroup: 'Shoulders', sets: 4, repsMin: 6, repsMax: 8, weight: 65 },
+    { name: 'Incline DB Press', muscleGroup: 'Chest', sets: 3, repsMin: 8, repsMax: 10, weight: 50 },
+    { name: 'Lateral Raise', muscleGroup: 'Shoulders', sets: 3, repsMin: 12, repsMax: 15, weight: 15 },
+    { name: 'Tricep Pushdown', muscleGroup: 'Arms', sets: 3, repsMin: 10, repsMax: 12, weight: 40 },
+    { name: 'Overhead Extension', muscleGroup: 'Arms', sets: 3, repsMin: 10, repsMax: 12, weight: 30 },
+  ],
+  'Pull': [
+    { name: 'Barbell Row', muscleGroup: 'Back', sets: 4, repsMin: 6, repsMax: 8, weight: 135 },
+    { name: 'Lat Pulldown', muscleGroup: 'Back', sets: 3, repsMin: 8, repsMax: 10, weight: 100 },
+    { name: 'Face Pull', muscleGroup: 'Shoulders', sets: 3, repsMin: 12, repsMax: 15, weight: 30 },
+    { name: 'Barbell Curl', muscleGroup: 'Arms', sets: 3, repsMin: 8, repsMax: 10, weight: 50 },
+    { name: 'Hammer Curl', muscleGroup: 'Arms', sets: 3, repsMin: 10, repsMax: 12, weight: 25 },
+    { name: 'Rear Delt Fly', muscleGroup: 'Shoulders', sets: 3, repsMin: 12, repsMax: 15, weight: 15 },
+  ],
+  'Legs': [
+    { name: 'Barbell Squat', muscleGroup: 'Legs', sets: 4, repsMin: 6, repsMax: 8, weight: 185 },
+    { name: 'Romanian Deadlift', muscleGroup: 'Legs', sets: 4, repsMin: 8, repsMax: 10, weight: 135 },
+    { name: 'Leg Press', muscleGroup: 'Legs', sets: 3, repsMin: 10, repsMax: 12, weight: 270 },
+    { name: 'Leg Curl', muscleGroup: 'Legs', sets: 3, repsMin: 10, repsMax: 12, weight: 70 },
+    { name: 'Leg Extension', muscleGroup: 'Legs', sets: 3, repsMin: 12, repsMax: 15, weight: 60 },
+    { name: 'Calf Raise', muscleGroup: 'Legs', sets: 4, repsMin: 12, repsMax: 15, weight: 90 },
+  ],
+  'Upper A': [
+    { name: 'Bench Press', muscleGroup: 'Chest', sets: 4, repsMin: 6, repsMax: 8, weight: 135 },
+    { name: 'Barbell Row', muscleGroup: 'Back', sets: 4, repsMin: 6, repsMax: 8, weight: 135 },
+    { name: 'Overhead Press', muscleGroup: 'Shoulders', sets: 3, repsMin: 8, repsMax: 10, weight: 65 },
+    { name: 'Lat Pulldown', muscleGroup: 'Back', sets: 3, repsMin: 8, repsMax: 10, weight: 100 },
+    { name: 'Bicep Curl', muscleGroup: 'Arms', sets: 3, repsMin: 10, repsMax: 12, weight: 30 },
+    { name: 'Tricep Pushdown', muscleGroup: 'Arms', sets: 3, repsMin: 10, repsMax: 12, weight: 40 },
+  ],
+  'Upper B': [
+    { name: 'Incline DB Press', muscleGroup: 'Chest', sets: 4, repsMin: 8, repsMax: 10, weight: 50 },
+    { name: 'Cable Row', muscleGroup: 'Back', sets: 4, repsMin: 8, repsMax: 10, weight: 80 },
+    { name: 'Dumbbell Shoulder Press', muscleGroup: 'Shoulders', sets: 3, repsMin: 8, repsMax: 10, weight: 40 },
+    { name: 'Face Pull', muscleGroup: 'Shoulders', sets: 3, repsMin: 12, repsMax: 15, weight: 30 },
+    { name: 'Hammer Curl', muscleGroup: 'Arms', sets: 3, repsMin: 10, repsMax: 12, weight: 25 },
+    { name: 'Overhead Extension', muscleGroup: 'Arms', sets: 3, repsMin: 10, repsMax: 12, weight: 30 },
+  ],
+  'Lower A': [
+    { name: 'Barbell Squat', muscleGroup: 'Legs', sets: 4, repsMin: 6, repsMax: 8, weight: 185 },
+    { name: 'Romanian Deadlift', muscleGroup: 'Legs', sets: 3, repsMin: 8, repsMax: 10, weight: 135 },
+    { name: 'Leg Press', muscleGroup: 'Legs', sets: 3, repsMin: 10, repsMax: 12, weight: 270 },
+    { name: 'Leg Curl', muscleGroup: 'Legs', sets: 3, repsMin: 10, repsMax: 12, weight: 70 },
+    { name: 'Calf Raise', muscleGroup: 'Legs', sets: 4, repsMin: 12, repsMax: 15, weight: 90 },
+  ],
+  'Lower B': [
+    { name: 'Front Squat', muscleGroup: 'Legs', sets: 4, repsMin: 6, repsMax: 8, weight: 135 },
+    { name: 'Deadlift', muscleGroup: 'Back', sets: 4, repsMin: 5, repsMax: 6, weight: 225 },
+    { name: 'Walking Lunges', muscleGroup: 'Legs', sets: 3, repsMin: 10, repsMax: 12, weight: 40 },
+    { name: 'Leg Extension', muscleGroup: 'Legs', sets: 3, repsMin: 12, repsMax: 15, weight: 60 },
+    { name: 'Calf Raise', muscleGroup: 'Legs', sets: 4, repsMin: 12, repsMax: 15, weight: 90 },
+  ],
+  'Upper': [
+    { name: 'Bench Press', muscleGroup: 'Chest', sets: 4, repsMin: 6, repsMax: 8, weight: 135 },
+    { name: 'Barbell Row', muscleGroup: 'Back', sets: 4, repsMin: 6, repsMax: 8, weight: 135 },
+    { name: 'Overhead Press', muscleGroup: 'Shoulders', sets: 3, repsMin: 8, repsMax: 10, weight: 65 },
+    { name: 'Lat Pulldown', muscleGroup: 'Back', sets: 3, repsMin: 8, repsMax: 10, weight: 100 },
+    { name: 'Bicep Curl', muscleGroup: 'Arms', sets: 3, repsMin: 10, repsMax: 12, weight: 30 },
+    { name: 'Tricep Pushdown', muscleGroup: 'Arms', sets: 3, repsMin: 10, repsMax: 12, weight: 40 },
+  ],
+  'Lower': [
+    { name: 'Barbell Squat', muscleGroup: 'Legs', sets: 4, repsMin: 6, repsMax: 8, weight: 185 },
+    { name: 'Romanian Deadlift', muscleGroup: 'Legs', sets: 3, repsMin: 8, repsMax: 10, weight: 135 },
+    { name: 'Leg Press', muscleGroup: 'Legs', sets: 3, repsMin: 10, repsMax: 12, weight: 270 },
+    { name: 'Leg Curl', muscleGroup: 'Legs', sets: 3, repsMin: 10, repsMax: 12, weight: 70 },
+    { name: 'Calf Raise', muscleGroup: 'Legs', sets: 4, repsMin: 12, repsMax: 15, weight: 90 },
+  ],
+  'Workout': [
+    { name: 'Bench Press', muscleGroup: 'Chest', sets: 3, repsMin: 8, repsMax: 10, weight: 135 },
+    { name: 'Barbell Row', muscleGroup: 'Back', sets: 3, repsMin: 8, repsMax: 10, weight: 95 },
+    { name: 'Barbell Squat', muscleGroup: 'Legs', sets: 3, repsMin: 8, repsMax: 10, weight: 135 },
+    { name: 'Overhead Press', muscleGroup: 'Shoulders', sets: 3, repsMin: 8, repsMax: 10, weight: 65 },
+    { name: 'Bicep Curl', muscleGroup: 'Arms', sets: 3, repsMin: 10, repsMax: 12, weight: 30 },
+  ],
+};
+
 export default function TrainScreen() {
   const { workoutName, dayNumber, exercises, activeExerciseIndex, setActiveExercise, startRestTimer, startWorkout } = useWorkoutStore();
   const trainingSplit = useUserStore((s) => s.trainingSplit);
+  const restTimerDuration = useUserStore((s) => s.restTimerDuration);
   const [loggerExercise, setLoggerExercise] = useState<any>(null);
   const [showPicker, setShowPicker] = useState(false);
+  const [refreshing, setRefreshing] = useState(false);
 
   const hasWorkout = exercises.length > 0;
+
+  // Sync rest timer duration from user settings
+  useEffect(() => {
+    if (restTimerDuration) {
+      useWorkoutStore.setState({ restTimerDuration });
+    }
+  }, [restTimerDuration]);
 
   const handleExercisePress = (exercise: any, index: number) => {
     setActiveExercise(index);
     if (exercise.completedSets.length < exercise.sets) {
       setLoggerExercise(exercise);
+      Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
     }
   };
 
@@ -193,19 +305,48 @@ export default function TrainScreen() {
   };
 
   const handlePickWorkout = (name: string, day: number) => {
-    useWorkoutStore.setState({ workoutName: name, dayNumber: day });
+    const template = EXERCISE_TEMPLATES[name] || EXERCISE_TEMPLATES['Workout'] || [];
+    const exercisesWithIds = template.map((ex, i) => ({
+      ...ex,
+      id: `ex-${Date.now()}-${i}`,
+      completedSets: [],
+    }));
+
+    useWorkoutStore.setState({
+      workoutName: name,
+      dayNumber: day,
+      exercises: exercisesWithIds,
+      activeExerciseIndex: 0,
+    });
     startWorkout();
     setShowPicker(false);
+    Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+  };
+
+  const handleRefresh = async () => {
+    setRefreshing(true);
+    await useWorkoutStore.getState().loadWorkout();
+    setRefreshing(false);
   };
 
   const templates = WORKOUT_TEMPLATES[trainingSplit] || [];
 
+  const totalSets = exercises.reduce((sum, e) => sum + e.sets, 0);
+  const completedSets = exercises.reduce((sum, e) => sum + e.completedSets.length, 0);
+  const allDone = hasWorkout && completedSets >= totalSets;
+
   return (
     <SafeAreaView style={{ flex: 1, backgroundColor: colors.bg }}>
-      <ScrollView showsVerticalScrollIndicator={false}>
+      <ScrollView
+        showsVerticalScrollIndicator={false}
+        refreshControl={<RefreshControl refreshing={refreshing} onRefresh={handleRefresh} tintColor={colors.primary} />}
+      >
         <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', paddingHorizontal: 20, paddingTop: 16, paddingBottom: 8 }}>
           <Text style={{ fontFamily: 'DMSans-Bold', fontSize: 28, color: colors.textPrimary, letterSpacing: -0.8 }}>Train</Text>
-          <Pressable style={{ paddingVertical: 8, paddingHorizontal: 14, borderRadius: 10, backgroundColor: colors.surface, borderWidth: 1, borderColor: 'rgba(255,255,255,0.06)' }}>
+          <Pressable
+            onPress={() => router.push('/workout-history')}
+            style={{ paddingVertical: 8, paddingHorizontal: 14, borderRadius: 10, backgroundColor: colors.surface, borderWidth: 1, borderColor: 'rgba(255,255,255,0.06)' }}
+          >
             <Text style={{ fontFamily: 'DMSans-Medium', fontSize: 13, color: colors.textSecondary }}>History</Text>
           </Pressable>
         </View>
@@ -220,9 +361,20 @@ export default function TrainScreen() {
                 <Text style={{ fontFamily: 'DMSans-Medium', fontSize: 11, color: colors.primary, textTransform: 'uppercase', letterSpacing: 0.7 }}>Day {dayNumber}</Text>
               </View>
               <Text style={{ fontFamily: 'DMSans', fontSize: 13, color: colors.textTertiary }}>
-                {exercises.length} exercises · {exercises.reduce((sum, e) => sum + e.completedSets.length, 0)}/{exercises.reduce((sum, e) => sum + e.sets, 0)} sets done
+                {exercises.length} exercises · {completedSets}/{totalSets} sets done
               </Text>
+              {/* Progress bar */}
+              <View style={{ height: 4, borderRadius: 2, backgroundColor: colors.elevated, marginTop: 4 }}>
+                <View style={{ height: 4, borderRadius: 2, backgroundColor: allDone ? colors.success : colors.primary, width: `${totalSets > 0 ? Math.min((completedSets / totalSets) * 100, 100) : 0}%` }} />
+              </View>
             </View>
+
+            {allDone && (
+              <View style={{ marginHorizontal: 20, marginVertical: 8, padding: 16, borderRadius: 12, backgroundColor: 'rgba(52, 211, 153, 0.08)', borderWidth: 1, borderColor: 'rgba(52, 211, 153, 0.15)', alignItems: 'center', gap: 4 }}>
+                <Text style={{ fontFamily: 'DMSans-Bold', fontSize: 16, color: colors.success }}>Workout Complete!</Text>
+                <Text style={{ fontFamily: 'DMSans', fontSize: 13, color: colors.textSecondary }}>Great work. All sets finished.</Text>
+              </View>
+            )}
 
             {exercises.map((exercise, i) => (
               <ExerciseRow
@@ -251,13 +403,21 @@ export default function TrainScreen() {
               >
                 <View>
                   <Text style={{ fontFamily: 'DMSans-SemiBold', fontSize: 15, color: colors.textPrimary }}>{name}</Text>
-                  <Text style={{ fontFamily: 'DMSans', fontSize: 12, color: colors.textTertiary }}>Day {i + 1}</Text>
+                  <Text style={{ fontFamily: 'DMSans', fontSize: 12, color: colors.textTertiary }}>
+                    Day {i + 1} · {(EXERCISE_TEMPLATES[name] || []).length} exercises
+                  </Text>
                 </View>
                 <Svg width={16} height={16} viewBox="0 0 16 16" fill="none">
                   <Path d="M6 3l5 5-5 5" stroke={colors.textTertiary} strokeWidth={1.5} strokeLinecap="round" strokeLinejoin="round" />
                 </Svg>
               </Pressable>
             ))}
+            <Pressable
+              onPress={() => setShowPicker(false)}
+              style={{ alignItems: 'center', paddingVertical: 12 }}
+            >
+              <Text style={{ fontFamily: 'DMSans-Medium', fontSize: 14, color: colors.textTertiary }}>Cancel</Text>
+            </Pressable>
           </View>
         ) : (
           <EmptyWorkoutState onStart={() => {
@@ -265,8 +425,7 @@ export default function TrainScreen() {
               setShowPicker(true);
             } else {
               // No split configured — start a generic workout
-              useWorkoutStore.setState({ workoutName: 'Workout', dayNumber: 1 });
-              startWorkout();
+              handlePickWorkout('Workout', 1);
             }
           }} />
         )}
