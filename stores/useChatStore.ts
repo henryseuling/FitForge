@@ -81,6 +81,10 @@ function dispatchToolCall(tc: ToolCall): string {
           weight: input.weight,
           reps: input.reps,
           rir: input.rir ?? 2,
+          isWarmup: input.isWarmup ?? false,
+          perSide: input.perSide ?? false,
+          bodyweight: input.bodyweight ?? false,
+          note: input.note ?? '',
         });
         return JSON.stringify({ success: true, exerciseId: input.exerciseId, setNumber: input.setNumber });
       case 'set_active_exercise':

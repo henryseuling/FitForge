@@ -87,6 +87,7 @@ export default function RootLayout() {
         <Stack.Screen name="goals" options={{ presentation: 'modal', animation: 'slide_from_bottom' }} />
         <Stack.Screen name="add-meal" options={{ presentation: 'modal', animation: 'slide_from_bottom' }} />
         <Stack.Screen name="workout-history" options={{ presentation: 'modal', animation: 'slide_from_bottom' }} />
+        <Stack.Screen name="active-workout" options={{ presentation: 'fullScreenModal', animation: 'slide_from_bottom', gestureEnabled: false }} />
       </Stack>
     </>
   );

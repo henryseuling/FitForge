@@ -23,7 +23,7 @@ export default function EditProfileScreen() {
 
   const LEVELS = ['Beginner', 'Intermediate', 'Advanced'];
   const SPLITS = ['3-Day Full Body', '4-Day Upper/Lower', '5-Day Rotation', '6-Day PPL'];
-  const GENDERS = ['Male', 'Female', 'Other'];
+  const GENDERS = ['Male', 'Female', 'Other', 'Prefer not to say'];
 
   const handleSave = () => {
     useUserStore.getState().updateProfile({
@@ -35,9 +35,17 @@ export default function EditProfileScreen() {
       level,
       trainingSplit: split,
     });
+    const cals = parseInt(calories) || 2000;
+    const prot = parseInt(protein) || 150;
+    const proteinCals = prot * 4;
+    const remainingCals = cals - proteinCals;
+    const carbsTarget = Math.round((remainingCals * 0.55) / 4);
+    const fatTarget = Math.round((remainingCals * 0.45) / 9);
     useNutritionStore.getState().updateTargets({
-      calorieTarget: parseInt(calories) || 2000,
-      proteinTarget: parseInt(protein) || 150,
+      calorieTarget: cals,
+      proteinTarget: prot,
+      carbsTarget,
+      fatTarget,
     });
     Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
     router.back();

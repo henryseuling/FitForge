@@ -1,20 +1,24 @@
 import React, { useState, useEffect, useCallback } from 'react';
-import { View, Text, Pressable, ScrollView, ActivityIndicator, RefreshControl } from 'react-native';
+import { View, Text, Pressable, ScrollView, ActivityIndicator, RefreshControl, Alert } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { router } from 'expo-router';
 import { colors } from '@/lib/theme';
 import { supabase } from '@/lib/supabase';
 import Svg, { Path } from 'react-native-svg';
+import * as Haptics from 'expo-haptics';
 
 type CompletedSet = {
   id: string;
   weight: number | null;
   reps: number | null;
+  is_warmup?: boolean;
+  rir?: number | null;
 };
 
 type Exercise = {
   id: string;
   name: string;
+  muscle_group?: string;
   completed_sets: CompletedSet[];
 };
 
@@ -23,6 +27,13 @@ type Workout = {
   name: string;
   started_at: string;
   finished_at: string | null;
+  split_type?: string | null;
+  session_notes?: string | null;
+  cardio_data?: any;
+  sauna_data?: any;
+  volume_by_muscle?: Record<string, number> | null;
+  muscles_trained?: string[] | null;
+  total_working_sets?: number | null;
   exercises: Exercise[];
 };
 
@@ -137,14 +148,19 @@ function ClockIcon() {
   );
 }
 
-function WorkoutCard({ workout }: { workout: Workout }) {
+function WorkoutCard({ workout, onDelete }: { workout: Workout; onDelete: () => void }) {
   const [expanded, setExpanded] = useState(false);
   const duration = formatDuration(workout.started_at, workout.finished_at);
   const totalSets = getTotalSets(workout.exercises);
   const exerciseCount = workout.exercises.length;
+  const hasCardio = workout.cardio_data && (Array.isArray(workout.cardio_data) ? workout.cardio_data.length > 0 : true);
+  const hasSauna = workout.sauna_data && (Array.isArray(workout.sauna_data) ? workout.sauna_data.length > 0 : true);
 
   return (
-    <Pressable onPress={() => setExpanded((prev) => !prev)}>
+    <Pressable
+      onPress={() => setExpanded((prev) => !prev)}
+      onLongPress={() => { Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium); onDelete(); }}
+    >
       <View
         style={{
           backgroundColor: colors.surface,
@@ -158,16 +174,23 @@ function WorkoutCard({ workout }: { workout: Workout }) {
         <View style={{ padding: 16, gap: 10 }}>
           <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-start' }}>
             <View style={{ flex: 1, gap: 3 }}>
-              <Text
-                style={{
-                  fontFamily: 'DMSans-SemiBold',
-                  fontSize: 16,
-                  color: colors.textPrimary,
-                }}
-                numberOfLines={1}
-              >
-                {workout.name || 'Workout'}
-              </Text>
+              <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
+                <Text
+                  style={{
+                    fontFamily: 'DMSans-SemiBold',
+                    fontSize: 16,
+                    color: colors.textPrimary,
+                  }}
+                  numberOfLines={1}
+                >
+                  {workout.name || 'Workout'}
+                </Text>
+                {workout.split_type && (
+                  <View style={{ backgroundColor: colors.primaryMuted, paddingHorizontal: 6, paddingVertical: 2, borderRadius: 4 }}>
+                    <Text style={{ fontFamily: 'JetBrainsMono-Bold', fontSize: 9, color: colors.primary }}>{workout.split_type}</Text>
+                  </View>
+                )}
+              </View>
               <Text
                 style={{
                   fontFamily: 'DMSans',
@@ -182,70 +205,38 @@ function WorkoutCard({ workout }: { workout: Workout }) {
           </View>
 
           {/* Stats Row */}
-          <View style={{ flexDirection: 'row', alignItems: 'center', gap: 16 }}>
+          <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6, flexWrap: 'wrap' }}>
             {duration && (
               <View style={{ flexDirection: 'row', alignItems: 'center', gap: 5 }}>
                 <ClockIcon />
-                <Text
-                  style={{
-                    fontFamily: 'JetBrainsMono-Medium',
-                    fontSize: 12,
-                    color: colors.textTertiary,
-                  }}
-                >
-                  {duration}
-                </Text>
+                <Text style={{ fontFamily: 'JetBrainsMono-Medium', fontSize: 12, color: colors.textTertiary }}>{duration}</Text>
               </View>
             )}
-            <View
-              style={{
-                flexDirection: 'row',
-                alignItems: 'center',
-                gap: 6,
-              }}
-            >
-              <View
-                style={{
-                  backgroundColor: colors.primaryMuted,
-                  paddingHorizontal: 8,
-                  paddingVertical: 3,
-                  borderRadius: 6,
-                }}
-              >
-                <Text
-                  style={{
-                    fontFamily: 'JetBrainsMono-Bold',
-                    fontSize: 11,
-                    color: colors.primary,
-                  }}
-                >
-                  {exerciseCount} {exerciseCount === 1 ? 'exercise' : 'exercises'}
-                </Text>
-              </View>
-              <View
-                style={{
-                  backgroundColor: 'rgba(52, 211, 153, 0.10)',
-                  paddingHorizontal: 8,
-                  paddingVertical: 3,
-                  borderRadius: 6,
-                }}
-              >
-                <Text
-                  style={{
-                    fontFamily: 'JetBrainsMono-Bold',
-                    fontSize: 11,
-                    color: colors.success,
-                  }}
-                >
-                  {totalSets} {totalSets === 1 ? 'set' : 'sets'}
-                </Text>
-              </View>
+            <View style={{ backgroundColor: colors.primaryMuted, paddingHorizontal: 8, paddingVertical: 3, borderRadius: 6 }}>
+              <Text style={{ fontFamily: 'JetBrainsMono-Bold', fontSize: 11, color: colors.primary }}>
+                {exerciseCount} {exerciseCount === 1 ? 'exercise' : 'exercises'}
+              </Text>
             </View>
+            <View style={{ backgroundColor: 'rgba(52, 211, 153, 0.10)', paddingHorizontal: 8, paddingVertical: 3, borderRadius: 6 }}>
+              <Text style={{ fontFamily: 'JetBrainsMono-Bold', fontSize: 11, color: colors.success }}>
+                {workout.total_working_sets ?? totalSets} {(workout.total_working_sets ?? totalSets) === 1 ? 'set' : 'sets'}
+              </Text>
+            </View>
+            {hasCardio && (
+              <View style={{ backgroundColor: 'rgba(96, 165, 250, 0.10)', paddingHorizontal: 6, paddingVertical: 3, borderRadius: 6 }}>
+                <Text style={{ fontFamily: 'JetBrainsMono-Bold', fontSize: 10, color: '#60A5FA' }}>CARDIO</Text>
+              </View>
+            )}
+            {hasSauna && (
+              <View style={{ backgroundColor: 'rgba(251, 146, 60, 0.10)', paddingHorizontal: 6, paddingVertical: 3, borderRadius: 6 }}>
+                <Text style={{ fontFamily: 'JetBrainsMono-Bold', fontSize: 10, color: '#FB923C' }}>RECOVERY</Text>
+              </View>
+            )}
           </View>
         </View>
 
-        {/* Expanded Exercise List */}
-        {expanded && workout.exercises.length > 0 && (
+        {/* Expanded Details */}
+        {expanded && (
           <View
             style={{
               borderTopWidth: 1,
@@ -256,41 +247,42 @@ function WorkoutCard({ workout }: { workout: Workout }) {
               gap: 10,
             }}
           >
+            {/* Volume by muscle breakdown */}
+            {workout.volume_by_muscle && Object.keys(workout.volume_by_muscle).length > 0 && (
+              <View style={{ gap: 6, paddingBottom: 8, borderBottomWidth: 1, borderBottomColor: 'rgba(255,255,255,0.04)' }}>
+                <Text style={{ fontFamily: 'DMSans-Medium', fontSize: 11, color: colors.textTertiary, textTransform: 'uppercase', letterSpacing: 0.6 }}>Volume by Muscle</Text>
+                <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 6 }}>
+                  {Object.entries(workout.volume_by_muscle).map(([muscle, sets]) => (
+                    <View key={muscle} style={{ flexDirection: 'row', alignItems: 'center', gap: 4 }}>
+                      <Text style={{ fontFamily: 'DMSans-Medium', fontSize: 12, color: colors.textSecondary }}>{muscle}</Text>
+                      <Text style={{ fontFamily: 'JetBrainsMono-Medium', fontSize: 11, color: colors.textTertiary }}>{sets}s</Text>
+                    </View>
+                  ))}
+                </View>
+              </View>
+            )}
+
+            {/* Exercise list */}
             {workout.exercises.map((exercise) => (
               <View key={exercise.id} style={{ gap: 2 }}>
                 <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' }}>
-                  <Text
-                    style={{
-                      fontFamily: 'DMSans-Medium',
-                      fontSize: 14,
-                      color: colors.textPrimary,
-                      flex: 1,
-                    }}
-                    numberOfLines={1}
-                  >
+                  <Text style={{ fontFamily: 'DMSans-Medium', fontSize: 14, color: colors.textPrimary, flex: 1 }} numberOfLines={1}>
                     {exercise.name}
                   </Text>
-                  <Text
-                    style={{
-                      fontFamily: 'JetBrainsMono-Medium',
-                      fontSize: 12,
-                      color: colors.textTertiary,
-                    }}
-                  >
+                  <Text style={{ fontFamily: 'JetBrainsMono-Medium', fontSize: 12, color: colors.textTertiary }}>
                     {exercise.completed_sets.length} {exercise.completed_sets.length === 1 ? 'set' : 'sets'}
                   </Text>
                 </View>
-                <Text
-                  style={{
-                    fontFamily: 'DMSans',
-                    fontSize: 12,
-                    color: colors.textTertiary,
-                  }}
-                >
-                  {getWeightSummary(exercise.completed_sets)}
-                </Text>
+                <Text style={{ fontFamily: 'DMSans', fontSize: 12, color: colors.textTertiary }}>{getWeightSummary(exercise.completed_sets)}</Text>
               </View>
             ))}
+
+            {/* Session notes */}
+            {workout.session_notes && (
+              <View style={{ paddingTop: 6, borderTopWidth: 1, borderTopColor: 'rgba(255,255,255,0.04)' }}>
+                <Text style={{ fontFamily: 'DMSans', fontSize: 12, color: colors.textTertiary, fontStyle: 'italic', lineHeight: 17 }}>{workout.session_notes}</Text>
+              </View>
+            )}
           </View>
         )}
       </View>
@@ -298,15 +290,70 @@ function WorkoutCard({ workout }: { workout: Workout }) {
   );
 }
 
+type FilterPeriod = 'week' | 'month' | 'all';
+
+function FilterPills({ active, onChange }: { active: FilterPeriod; onChange: (p: FilterPeriod) => void }) {
+  const options: FilterPeriod[] = ['week', 'month', 'all'];
+  return (
+    <View style={{ flexDirection: 'row', borderRadius: 10, backgroundColor: colors.surface, padding: 3, gap: 2 }}>
+      {options.map((p) => (
+        <Pressable
+          key={p}
+          onPress={() => { onChange(p); Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light); }}
+          style={{
+            paddingVertical: 5, paddingHorizontal: 12, borderRadius: 8,
+            backgroundColor: active === p ? colors.elevated : 'transparent',
+          }}
+        >
+          <Text style={{
+            fontFamily: active === p ? 'DMSans-SemiBold' : 'DMSans',
+            fontSize: 12, color: active === p ? colors.textPrimary : colors.textTertiary,
+            textTransform: 'capitalize',
+          }}>{p}</Text>
+        </Pressable>
+      ))}
+    </View>
+  );
+}
+
 export default function WorkoutHistoryScreen() {
   const [workouts, setWorkouts] = useState<Workout[]>([]);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
+  const [filter, setFilter] = useState<FilterPeriod>('all');
 
   const loadWorkouts = useCallback(async () => {
     const data = await fetchWorkoutHistory();
     setWorkouts(data);
   }, []);
+
+  const handleDeleteWorkout = (workoutId: string, workoutName: string) => {
+    Alert.alert('Delete Workout', `Remove "${workoutName || 'Workout'}" from history?`, [
+      { text: 'Cancel', style: 'cancel' },
+      {
+        text: 'Delete', style: 'destructive', onPress: async () => {
+          Haptics.notificationAsync(Haptics.NotificationFeedbackType.Warning);
+          setWorkouts((prev) => prev.filter((w) => w.id !== workoutId));
+          try { await supabase.from('workouts').delete().eq('id', workoutId); } catch {}
+        },
+      },
+    ]);
+  };
+
+  const filteredWorkouts = workouts.filter((w) => {
+    if (filter === 'all') return true;
+    const date = new Date(w.started_at);
+    const now = new Date();
+    if (filter === 'week') {
+      const weekAgo = new Date(now.getTime() - 7 * 24 * 60 * 60 * 1000);
+      return date >= weekAgo;
+    }
+    if (filter === 'month') {
+      const monthAgo = new Date(now.getTime() - 30 * 24 * 60 * 60 * 1000);
+      return date >= monthAgo;
+    }
+    return true;
+  });
 
   useEffect(() => {
     loadWorkouts().finally(() => setLoading(false));
@@ -325,37 +372,62 @@ export default function WorkoutHistoryScreen() {
         style={{
           flexDirection: 'row',
           alignItems: 'center',
+          justifyContent: 'space-between',
           paddingHorizontal: 20,
           paddingTop: 16,
           paddingBottom: 12,
-          gap: 12,
         }}
       >
-        <Pressable
-          onPress={() => router.back()}
-          style={{
-            width: 36,
-            height: 36,
-            borderRadius: 10,
-            backgroundColor: colors.surface,
-            alignItems: 'center',
-            justifyContent: 'center',
-            borderWidth: 1,
-            borderColor: colors.borderLight,
-          }}
-        >
-          <BackArrowIcon />
-        </Pressable>
-        <Text
-          style={{
-            fontFamily: 'DMSans-Bold',
-            fontSize: 20,
-            color: colors.textPrimary,
-          }}
-        >
-          Workout History
-        </Text>
+        <View style={{ flexDirection: 'row', alignItems: 'center', gap: 12 }}>
+          <Pressable
+            onPress={() => router.back()}
+            style={{
+              width: 36,
+              height: 36,
+              borderRadius: 10,
+              backgroundColor: colors.surface,
+              alignItems: 'center',
+              justifyContent: 'center',
+              borderWidth: 1,
+              borderColor: colors.borderLight,
+            }}
+          >
+            <BackArrowIcon />
+          </Pressable>
+          <Text
+            style={{
+              fontFamily: 'DMSans-Bold',
+              fontSize: 20,
+              color: colors.textPrimary,
+            }}
+          >
+            History
+          </Text>
+        </View>
+        <FilterPills active={filter} onChange={setFilter} />
       </View>
+
+      {/* Summary Stats */}
+      {filteredWorkouts.length > 0 && (
+        <View style={{ flexDirection: 'row', paddingHorizontal: 20, paddingBottom: 12, gap: 10 }}>
+          <View style={{ flex: 1, padding: 12, borderRadius: 12, backgroundColor: colors.surface, borderWidth: 1, borderColor: 'rgba(255,255,255,0.04)', alignItems: 'center', gap: 2 }}>
+            <Text style={{ fontFamily: 'JetBrainsMono-Bold', fontSize: 20, color: colors.primary }}>{filteredWorkouts.length}</Text>
+            <Text style={{ fontFamily: 'DMSans', fontSize: 11, color: colors.textTertiary }}>workouts</Text>
+          </View>
+          <View style={{ flex: 1, padding: 12, borderRadius: 12, backgroundColor: colors.surface, borderWidth: 1, borderColor: 'rgba(255,255,255,0.04)', alignItems: 'center', gap: 2 }}>
+            <Text style={{ fontFamily: 'JetBrainsMono-Bold', fontSize: 20, color: colors.success }}>
+              {filteredWorkouts.reduce((sum, w) => sum + getTotalSets(w.exercises), 0)}
+            </Text>
+            <Text style={{ fontFamily: 'DMSans', fontSize: 11, color: colors.textTertiary }}>total sets</Text>
+          </View>
+          <View style={{ flex: 1, padding: 12, borderRadius: 12, backgroundColor: colors.surface, borderWidth: 1, borderColor: 'rgba(255,255,255,0.04)', alignItems: 'center', gap: 2 }}>
+            <Text style={{ fontFamily: 'JetBrainsMono-Bold', fontSize: 20, color: colors.textPrimary }}>
+              {filteredWorkouts.reduce((sum, w) => sum + w.exercises.length, 0)}
+            </Text>
+            <Text style={{ fontFamily: 'DMSans', fontSize: 11, color: colors.textTertiary }}>exercises</Text>
+          </View>
+        </View>
+      )}
 
       {/* Content */}
       {loading ? (
@@ -415,8 +487,8 @@ export default function WorkoutHistoryScreen() {
             />
           }
         >
-          {workouts.map((workout) => (
-            <WorkoutCard key={workout.id} workout={workout} />
+          {filteredWorkouts.map((workout) => (
+            <WorkoutCard key={workout.id} workout={workout} onDelete={() => handleDeleteWorkout(workout.id, workout.name)} />
           ))}
         </ScrollView>
       )}

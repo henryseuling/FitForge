@@ -35,6 +35,10 @@ export default function SetLogger({ exercise, visible, onClose, onLog }: SetLogg
       weight: parseFloat(weight) || 0,
       reps: parseInt(reps) || 0,
       rir: parseInt(rir) || 0,
+      isWarmup: false,
+      perSide: false,
+      bodyweight: false,
+      note: '',
     };
 
     logSet(exercise.id, set);

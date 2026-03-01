@@ -1,4 +1,4 @@
-import React, { useState, useCallback } from 'react';
+import React, { useState, useCallback, useEffect } from 'react';
 import {
   View,
   Text,
@@ -15,6 +15,7 @@ import { colors, spacing, radius } from '@/lib/theme';
 import { useUserStore } from '@/stores/useUserStore';
 import { useProgressStore } from '@/stores/useProgressStore';
 import { useNutritionStore } from '@/stores/useNutritionStore';
+import { supabase } from '@/lib/supabase';
 import * as Haptics from 'expo-haptics';
 import Svg, { Path, Circle, Rect } from 'react-native-svg';
 
@@ -617,14 +618,54 @@ export default function GoalsScreen() {
   const [goals, setGoals] = useState<Goal[]>([]);
   const [showForm, setShowForm] = useState(false);
 
-  const handleAddGoal = useCallback((goal: Goal) => {
-    setGoals((prev) => [...prev, goal]);
-    setShowForm(false);
+  // Load goals from Supabase on mount
+  useEffect(() => {
+    (async () => {
+      try {
+        const { data: { user } } = await supabase.auth.getUser();
+        if (!user) return;
+        const { data } = await supabase.from('goals').select('*').eq('user_id', user.id).order('created_at', { ascending: true });
+        if (data && data.length > 0) {
+          setGoals(data.map((g: any) => ({
+            id: g.id,
+            type: g.type,
+            title: g.title,
+            current: g.current_value || 0,
+            target: g.target_value || 0,
+            unit: g.unit || '',
+            deadline: g.deadline || undefined,
+          })));
+        }
+      } catch {}
+    })();
   }, []);
 
-  const handleDeleteGoal = useCallback((id: string) => {
+  const handleAddGoal = useCallback(async (goal: Goal) => {
+    setGoals((prev) => [...prev, goal]);
+    setShowForm(false);
+    // Persist to Supabase
+    try {
+      const { data: { user } } = await supabase.auth.getUser();
+      if (!user) return;
+      await supabase.from('goals').insert({
+        id: goal.id.length > 20 ? undefined : undefined, // let DB generate
+        user_id: user.id,
+        type: goal.type,
+        title: goal.title,
+        target_value: goal.target,
+        current_value: goal.current,
+        unit: goal.unit,
+        deadline: goal.deadline || null,
+      });
+    } catch {}
+  }, []);
+
+  const handleDeleteGoal = useCallback(async (id: string) => {
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
     setGoals((prev) => prev.filter((g) => g.id !== id));
+    try {
+      await supabase.from('goals').delete().eq('id', id);
+    } catch {}
   }, []);
 
   const completedCount = goals.filter((g) => getProgressPercent(g.current, g.target, g.type) >= 100).length;

@@ -7,6 +7,7 @@ import { router } from 'expo-router';
 import { colors } from '@/lib/theme';
 import { useWorkoutStore } from '@/stores/useWorkoutStore';
 import { useUserStore } from '@/stores/useUserStore';
+import { fetchNextSessionPlan, fetchAIObservations } from '@/lib/api';
 import SetLogger from '@/components/SetLogger';
 
 function ReadinessCard() {
@@ -53,6 +54,85 @@ function ReadinessCard() {
           ))}
         </View>
       </View>
+    </View>
+  );
+}
+
+function CoachPreview() {
+  const [plan, setPlan] = useState<any>(null);
+  const [observations, setObservations] = useState<any[]>([]);
+  const [loaded, setLoaded] = useState(false);
+
+  useEffect(() => {
+    let cancelled = false;
+    (async () => {
+      try {
+        const [p, obs] = await Promise.all([
+          fetchNextSessionPlan().catch(() => null),
+          fetchAIObservations(3).catch(() => []),
+        ]);
+        if (!cancelled) {
+          setPlan(p);
+          setObservations(obs);
+          setLoaded(true);
+        }
+      } catch {
+        if (!cancelled) setLoaded(true);
+      }
+    })();
+    return () => { cancelled = true; };
+  }, []);
+
+  if (!loaded || (!plan && observations.length === 0)) return null;
+
+  return (
+    <View style={{ marginHorizontal: 20, marginTop: 12, padding: 16, borderRadius: 16, backgroundColor: colors.surface, borderWidth: 1, borderColor: 'rgba(232, 168, 56, 0.12)', gap: 12 }}>
+      <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
+        <View style={{ width: 24, height: 24, borderRadius: 12, backgroundColor: colors.primaryMuted, alignItems: 'center', justifyContent: 'center' }}>
+          <Svg width={12} height={12} viewBox="0 0 12 12" fill="none">
+            <Path d="M6 1v10M1 6h10" stroke={colors.primary} strokeWidth={1.5} strokeLinecap="round" />
+          </Svg>
+        </View>
+        <Text style={{ fontFamily: 'DMSans-SemiBold', fontSize: 14, color: colors.textPrimary }}>Coach's Preview</Text>
+      </View>
+
+      {plan && (
+        <View style={{ gap: 8 }}>
+          {plan.split_type && (
+            <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
+              <View style={{ backgroundColor: colors.primaryMuted, paddingHorizontal: 8, paddingVertical: 3, borderRadius: 6 }}>
+                <Text style={{ fontFamily: 'JetBrainsMono-Bold', fontSize: 11, color: colors.primary }}>{plan.split_type}</Text>
+              </View>
+              <Text style={{ fontFamily: 'DMSans', fontSize: 12, color: colors.textTertiary }}>Next session</Text>
+            </View>
+          )}
+          {plan.key_lifts && Array.isArray(plan.key_lifts) && plan.key_lifts.length > 0 && (
+            <View style={{ gap: 4 }}>
+              <Text style={{ fontFamily: 'DMSans-Medium', fontSize: 11, color: colors.textTertiary, textTransform: 'uppercase', letterSpacing: 0.6 }}>Key Lifts</Text>
+              {plan.key_lifts.slice(0, 3).map((lift: any, i: number) => (
+                <Text key={i} style={{ fontFamily: 'DMSans', fontSize: 13, color: colors.textSecondary }}>
+                  {typeof lift === 'string' ? lift : lift.name || lift.exercise || JSON.stringify(lift)}
+                </Text>
+              ))}
+            </View>
+          )}
+          {plan.coach_notes && (
+            <Text style={{ fontFamily: 'DMSans', fontSize: 13, color: colors.textSecondary, fontStyle: 'italic', lineHeight: 18 }}>{plan.coach_notes}</Text>
+          )}
+        </View>
+      )}
+
+      {observations.length > 0 && (
+        <View style={{ gap: 6, borderTopWidth: plan ? 1 : 0, borderTopColor: 'rgba(255,255,255,0.04)', paddingTop: plan ? 10 : 0 }}>
+          <Text style={{ fontFamily: 'DMSans-Medium', fontSize: 11, color: colors.textTertiary, textTransform: 'uppercase', letterSpacing: 0.6 }}>Recent Observations</Text>
+          {observations.map((obs: any, i: number) => (
+            <View key={i} style={{ flexDirection: 'row', gap: 8, alignItems: 'flex-start' }}>
+              <View style={{ width: 4, height: 4, borderRadius: 2, backgroundColor: obs.category === 'progress' ? colors.success : obs.category === 'calibration' ? colors.primary : colors.textTertiary, marginTop: 7 }} />
+              <Text style={{ fontFamily: 'DMSans', fontSize: 13, color: colors.textSecondary, flex: 1, lineHeight: 18 }}>{obs.observation}</Text>
+            </View>
+          ))}
+        </View>
+      )}
     </View>
   );
 }
@@ -309,7 +389,16 @@ export default function TrainScreen() {
     const exercisesWithIds = template.map((ex, i) => ({
       ...ex,
       id: `ex-${Date.now()}-${i}`,
-      completedSets: [],
+      completedSets: [] as any[],
+      supersetGroup: null,
+      restBetweenSupersets: 60,
+      perSide: false,
+      bodyweight: false,
+      estimated1RM: null,
+      previousEstimated1RM: null,
+      percentChange: null,
+      bestSet: null,
+      exerciseNotes: '',
     }));
 
     useWorkoutStore.setState({
@@ -321,6 +410,7 @@ export default function TrainScreen() {
     startWorkout();
     setShowPicker(false);
     Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+    router.push('/active-workout');
   };
 
   const handleRefresh = async () => {
@@ -352,6 +442,7 @@ export default function TrainScreen() {
         </View>
 
         <ReadinessCard />
+        <CoachPreview />
 
         {hasWorkout ? (
           <>
@@ -369,11 +460,18 @@ export default function TrainScreen() {
               </View>
             </View>
 
-            {allDone && (
+            {allDone ? (
               <View style={{ marginHorizontal: 20, marginVertical: 8, padding: 16, borderRadius: 12, backgroundColor: 'rgba(52, 211, 153, 0.08)', borderWidth: 1, borderColor: 'rgba(52, 211, 153, 0.15)', alignItems: 'center', gap: 4 }}>
                 <Text style={{ fontFamily: 'DMSans-Bold', fontSize: 16, color: colors.success }}>Workout Complete!</Text>
                 <Text style={{ fontFamily: 'DMSans', fontSize: 13, color: colors.textSecondary }}>Great work. All sets finished.</Text>
               </View>
+            ) : (
+              <Pressable
+                onPress={() => { Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium); router.push('/active-workout'); }}
+                style={{ marginHorizontal: 20, marginVertical: 8, paddingVertical: 14, borderRadius: 12, backgroundColor: colors.primary, alignItems: 'center' }}
+              >
+                <Text style={{ fontFamily: 'DMSans-Bold', fontSize: 15, color: colors.bg }}>Continue Workout</Text>
+              </Pressable>
             )}
 
             {exercises.map((exercise, i) => (

@@ -159,8 +159,29 @@ export default function SettingsScreen() {
 
   const handleExportData = async () => {
     try {
+      const userState = useUserStore.getState();
+      const nutritionState = useNutritionStore.getState();
+      const exportData = {
+        profile: {
+          name: userState.name,
+          level: userState.level,
+          height: userState.height,
+          weight: userState.weight,
+          age: userState.age,
+          gender: userState.gender,
+          goals: userState.goals,
+          trainingSplit: userState.trainingSplit,
+        },
+        nutrition: {
+          calorieTarget: nutritionState.calorieTarget,
+          proteinTarget: nutritionState.proteinTarget,
+          mealsToday: nutritionState.meals.length,
+          totalCaloriesToday: nutritionState.totalCalories(),
+        },
+        exportedAt: new Date().toISOString(),
+      };
       await Share.share({
-        message: 'FitForge data export is not yet available. This feature is coming soon!',
+        message: JSON.stringify(exportData, null, 2),
         title: 'FitForge Data Export',
       });
     } catch {
@@ -267,6 +288,16 @@ export default function SettingsScreen() {
             label="Export Data"
             iconBg={colors.elevated}
             onPress={handleExportData}
+          />
+        </SettingsSection>
+
+        <SettingsSection title="Data">
+          <SettingsRow
+            icon={<View style={{ width: 6, height: 6, borderRadius: 3, backgroundColor: colors.primary }} />}
+            label="Import Data"
+            value="Strong, Hevy, CSV..."
+            iconBg={colors.primaryMuted}
+            onPress={() => router.push('/import-data' as any)}
           />
         </SettingsSection>
 

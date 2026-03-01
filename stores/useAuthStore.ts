@@ -47,10 +47,10 @@ export const useAuthStore = create<AuthState>((set, get) => ({
         try {
           const { data: profile } = await supabase
             .from('profiles')
-            .select('level')
+            .select('level, onboarding_completed')
             .eq('id', session.user.id)
             .single();
-          onboarded = !!profile?.level;
+          onboarded = !!(profile?.onboarding_completed || profile?.level);
         } catch {
           // Profile may not exist yet
         }
@@ -84,6 +84,20 @@ export const useAuthStore = create<AuthState>((set, get) => ({
 
     resetAllStores();
     set({ session: data.session, user: data.user, isOnboarded: false });
+
+    // Ensure profile row exists with the user's name
+    if (data.user) {
+      try {
+        await supabase.from('profiles').upsert({
+          id: data.user.id,
+          name,
+          updated_at: new Date().toISOString(),
+        }, { onConflict: 'id' });
+        // Pre-populate name in user store
+        useUserStore.getState().updateProfile({ name } as any);
+      } catch {}
+    }
+
     return { error: null };
   },
 
@@ -101,10 +115,10 @@ export const useAuthStore = create<AuthState>((set, get) => ({
       try {
         const { data: profile } = await supabase
           .from('profiles')
-          .select('level')
+          .select('level, onboarding_completed')
           .eq('id', data.user.id)
           .single();
-        onboarded = !!profile?.level;
+        onboarded = !!(profile?.onboarding_completed || profile?.level);
       } catch {
         // Profile check failed — will route to onboarding
       }

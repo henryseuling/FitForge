@@ -130,6 +130,11 @@ export const useUserStore = create<UserState>((set) => ({
         units: profile.units || 'imperial',
         notifications: profile.notifications ?? true,
       });
+      // If profile has onboarding data, ensure auth store reflects it
+      if (profile.onboarding_completed || profile.level) {
+        const { useAuthStore } = require('./useAuthStore');
+        useAuthStore.getState().setOnboarded(true);
+      }
     } catch {
       // Silently fail — data stays at defaults
     }

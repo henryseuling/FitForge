@@ -29,6 +29,7 @@ interface NutritionState {
   carbsTarget: number;
   fatTarget: number;
   meals: Meal[];
+  waterGlasses: number;
 
   // Computed
   totalCalories: () => number;
@@ -41,6 +42,7 @@ interface NutritionState {
   addMeal: (meal: Meal) => void;
   removeMeal: (mealId: string) => void;
   updateTargets: (targets: Partial<{ calorieTarget: number; proteinTarget: number; carbsTarget: number; fatTarget: number }>) => void;
+  setWaterGlasses: (glasses: number) => void;
   loadNutrition: () => Promise<void>;
   reset: () => void;
 }
@@ -51,6 +53,7 @@ const INITIAL_STATE = {
   carbsTarget: 250,
   fatTarget: 65,
   meals: [] as Meal[],
+  waterGlasses: 0,
 };
 
 export const useNutritionStore = create<NutritionState>((set, get) => ({
@@ -64,16 +67,17 @@ export const useNutritionStore = create<NutritionState>((set, get) => ({
 
   addMeal: (meal) => {
     set((state) => ({ meals: [...state.meals, meal] }));
-    // Persist to Supabase
+    // Persist to Supabase with actual macro values
+    const mealType = meal.type.toLowerCase();
     apiLogMeal(
-      meal.type,
-      meal.type,
+      mealType,
+      mealType,
       meal.foods.map((f) => ({
         name: f.name,
         calories: f.calories,
-        protein: 0,
-        carbs: 0,
-        fat: 0,
+        protein: meal.protein > 0 ? Math.round(meal.protein / meal.foods.length) : 0,
+        carbs: meal.carbs > 0 ? Math.round(meal.carbs / meal.foods.length) : 0,
+        fat: meal.fat > 0 ? Math.round(meal.fat / meal.foods.length) : 0,
       }))
     ).catch(() => {});
   },
@@ -81,7 +85,23 @@ export const useNutritionStore = create<NutritionState>((set, get) => ({
   removeMeal: (mealId) => {
     set((state) => ({ meals: state.meals.filter((m) => m.id !== mealId) }));
     // Delete from Supabase
-    supabase.from('meals').delete().eq('id', mealId).then(() => {}).catch(() => {});
+    (async () => { try { await supabase.from('meals').delete().eq('id', mealId); } catch {} })();
+  },
+
+  setWaterGlasses: (glasses) => {
+    set({ waterGlasses: glasses });
+    // Persist to Supabase
+    (async () => {
+      try {
+        const { data: { user } } = await supabase.auth.getUser();
+        if (!user) return;
+        const today = new Date().toISOString().split('T')[0];
+        await supabase.from('water_intake').upsert(
+          { user_id: user.id, glasses, date: today },
+          { onConflict: 'user_id,date' }
+        );
+      } catch {}
+    })();
   },
 
   updateTargets: (targets) => {
@@ -97,10 +117,21 @@ export const useNutritionStore = create<NutritionState>((set, get) => ({
 
   loadNutrition: async () => {
     try {
-      // Load targets and today's meals in parallel
-      const [targets, meals] = await Promise.all([
+      // Load targets, today's meals, and water in parallel
+      const waterPromise = (async () => {
+        try {
+          const { data: { user } } = await supabase.auth.getUser();
+          if (!user) return null;
+          const today = new Date().toISOString().split('T')[0];
+          const { data } = await supabase.from('water_intake').select('glasses').eq('user_id', user.id).eq('date', today).single();
+          return data;
+        } catch { return null; }
+      })();
+
+      const [targets, meals, water] = await Promise.all([
         fetchNutritionTargets().catch(() => null),
         fetchTodayMeals().catch(() => []),
+        waterPromise,
       ]);
 
       const updates: Partial<typeof INITIAL_STATE> = {};
@@ -110,6 +141,10 @@ export const useNutritionStore = create<NutritionState>((set, get) => ({
         if (targets.protein_target) updates.proteinTarget = targets.protein_target;
         if (targets.carbs_target) updates.carbsTarget = targets.carbs_target;
         if (targets.fat_target) updates.fatTarget = targets.fat_target;
+      }
+
+      if (water?.glasses !== undefined) {
+        updates.waterGlasses = water.glasses;
       }
 
       if (meals && meals.length > 0) {

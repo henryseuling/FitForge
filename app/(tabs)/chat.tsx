@@ -67,10 +67,11 @@ export default function ChatScreen() {
   };
 
   const quickActions = [
-    { label: 'Swap exercise', message: "Can you suggest a swap for my current exercise? I'd like something that targets the same muscle group." },
-    { label: 'Adjust volume', message: "Based on my readiness score, should we adjust today's volume?" },
-    { label: 'Form check', message: "Can you give me form cues for my current exercise?" },
-    { label: 'Meal idea', message: "I need a high-protein meal idea to hit my macro targets today." },
+    { label: "What should I do today?", message: "What should I work on today? Based on my recent workouts and recovery, what's the best plan?" },
+    { label: "How's my progress?", message: "How's my overall progress looking? Any areas I should focus on?" },
+    { label: 'Meal ideas', message: "I need a high-protein meal idea to hit my macro targets today. What do you suggest?" },
+    { label: 'Am I overtraining?', message: "Am I overtraining? Look at my recent workout volume and recovery data." },
+    { label: 'Help me break a plateau', message: "I feel like I've hit a plateau. Can you suggest changes to help me break through?" },
   ];
 
   return (

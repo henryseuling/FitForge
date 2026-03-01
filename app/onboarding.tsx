@@ -10,6 +10,7 @@ import {
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { router } from 'expo-router';
+import Svg, { Path } from 'react-native-svg';
 import { colors } from '@/lib/theme';
 import { useUserStore } from '@/stores/useUserStore';
 import { useNutritionStore } from '@/stores/useNutritionStore';
@@ -34,7 +35,7 @@ const EQUIPMENT_OPTIONS = [
   'Resistance Bands',
 ];
 const FREQUENCY_OPTIONS = [2, 3, 4, 5, 6];
-const GENDERS = ['Male', 'Female', 'Other'];
+const GENDERS = ['Male', 'Female', 'Other', 'Prefer not to say'];
 
 function getSuggestedSplit(days: number): string {
   switch (days) {
@@ -74,9 +75,10 @@ export default function OnboardingScreen() {
   // Step 4 - Frequency
   const [frequency, setFrequency] = useState(0);
 
-  // Step 5 - Nutrition
+  // Step 5 - Nutrition (auto-calculated via Mifflin-St Jeor)
   const [calorieTarget, setCalorieTarget] = useState('2500');
   const [proteinTarget, setProteinTarget] = useState('150');
+  const [autoCalculated, setAutoCalculated] = useState(false);
 
   const userName = useAuthStore((s) => s.user?.user_metadata?.name || '');
   const suggestedSplit = getSuggestedSplit(frequency);
@@ -118,7 +120,47 @@ export default function OnboardingScreen() {
     if (!canProceed()) return;
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
     if (step < TOTAL_STEPS - 1) {
-      setStep(step + 1);
+      const nextStep = step + 1;
+      // Auto-calculate nutrition targets when entering the nutrition step
+      if (nextStep === 5 && !autoCalculated && weight && age && gender) {
+        const w = parseFloat(weight) || 155;
+        const a = parseInt(age) || 25;
+        // Parse height — supports "5'10" or "70" (inches) or "178" (cm if metric)
+        let heightCm = 175;
+        const ftMatch = height.match(/(\d+)'(\d+)/);
+        if (ftMatch) {
+          heightCm = (parseInt(ftMatch[1]) * 12 + parseInt(ftMatch[2])) * 2.54;
+        } else {
+          const numHeight = parseFloat(height);
+          if (numHeight > 100) heightCm = numHeight; // assume cm
+          else if (numHeight > 0) heightCm = numHeight * 2.54; // assume inches
+        }
+        const weightKg = w * 0.4536;
+        // Mifflin-St Jeor equation
+        let bmr: number;
+        if (gender === 'Male') {
+          bmr = 10 * weightKg + 6.25 * heightCm - 5 * a + 5;
+        } else if (gender === 'Female') {
+          bmr = 10 * weightKg + 6.25 * heightCm - 5 * a - 161;
+        } else {
+          bmr = 10 * weightKg + 6.25 * heightCm - 5 * a - 78; // midpoint
+        }
+        // Activity multiplier based on frequency
+        const activityMultipliers: Record<number, number> = { 2: 1.375, 3: 1.55, 4: 1.55, 5: 1.725, 6: 1.9 };
+        const multiplier = activityMultipliers[frequency] || 1.55;
+        let tdee = Math.round(bmr * multiplier);
+        // Adjust based on goals
+        if (goals.includes('Lose Weight')) tdee = Math.round(tdee * 0.8); // 20% deficit
+        else if (goals.includes('Build Muscle')) tdee = Math.round(tdee * 1.1); // 10% surplus
+        // Protein: 0.8-1g per lb bodyweight for muscle building, 0.7g for general
+        let protein = Math.round(w * 0.8);
+        if (goals.includes('Build Muscle')) protein = Math.round(w * 1.0);
+        else if (goals.includes('Lose Weight')) protein = Math.round(w * 0.9);
+        setCalorieTarget(tdee.toString());
+        setProteinTarget(protein.toString());
+        setAutoCalculated(true);
+      }
+      setStep(nextStep);
     } else {
       handleFinish();
     }
@@ -129,7 +171,7 @@ export default function OnboardingScreen() {
     setStep(step - 1);
   };
 
-  const handleFinish = () => {
+  const handleFinish = async () => {
     Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
 
     useUserStore.getState().updateProfile({
@@ -138,10 +180,6 @@ export default function OnboardingScreen() {
       weight: parseFloat(weight) || 0,
       level,
       trainingSplit: suggestedSplit,
-    } as any);
-
-    // Save extended profile data
-    useUserStore.getState().updateProfile({
       goals,
       equipment,
       age: parseInt(age) || 0,
@@ -149,10 +187,27 @@ export default function OnboardingScreen() {
       frequency,
     } as any);
 
+    // Calculate macro split from calories and protein
+    const cals = parseInt(calorieTarget) || 2500;
+    const protein = parseInt(proteinTarget) || 150;
+    const proteinCals = protein * 4;
+    const remainingCals = cals - proteinCals;
+    // 45% carbs, 55% fat from remaining calories
+    const carbsTarget = Math.round((remainingCals * 0.55) / 4);
+    const fatTarget = Math.round((remainingCals * 0.45) / 9);
+
     useNutritionStore.getState().updateTargets({
-      calorieTarget: parseInt(calorieTarget) || 2500,
-      proteinTarget: parseInt(proteinTarget) || 150,
+      calorieTarget: cals,
+      proteinTarget: protein,
+      carbsTarget,
+      fatTarget,
     });
+
+    // Mark onboarding as completed in Supabase
+    try {
+      const { updateProfile: apiUpdateProfile } = require('@/lib/api');
+      await apiUpdateProfile({ onboarding_completed: true });
+    } catch {}
 
     useAuthStore.getState().setOnboarded(true);
     router.replace('/(tabs)');
@@ -597,7 +652,10 @@ export default function OnboardingScreen() {
       <View>
         <StepHeader
           title="Nutrition targets"
-          subtitle="Set your daily calorie and protein goals. Your AI coach can adjust these later based on your progress."
+          subtitle={autoCalculated
+            ? "Calculated using the Mifflin-St Jeor equation based on your stats. Feel free to adjust."
+            : "Set your daily calorie and protein goals. Your AI coach can adjust these later based on your progress."
+          }
         />
         <View style={{ gap: 16 }}>
           <View style={{ gap: 8 }}>
@@ -723,6 +781,32 @@ export default function OnboardingScreen() {
               <SummaryRow label="Training" value={frequency > 0 ? `${frequency}x/week - ${suggestedSplit}` : '--'} />
             </View>
           </View>
+
+          {/* Import history prompt */}
+          <Pressable
+            onPress={() => { Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light); router.push('/import-data' as any); }}
+            style={{
+              marginTop: 12,
+              padding: 14,
+              borderRadius: 14,
+              backgroundColor: colors.primaryMuted,
+              borderWidth: 1,
+              borderColor: 'rgba(232, 168, 56, 0.2)',
+              flexDirection: 'row',
+              alignItems: 'center',
+              gap: 12,
+            }}
+          >
+            <View style={{ flex: 1 }}>
+              <Text style={{ fontFamily: 'DMSans-SemiBold', fontSize: 14, color: colors.primary }}>Bring your history</Text>
+              <Text style={{ fontFamily: 'DMSans', fontSize: 12, color: colors.textSecondary, marginTop: 2 }}>
+                Import from Strong, Hevy, Fitbod, or CSV
+              </Text>
+            </View>
+            <Svg width={16} height={16} viewBox="0 0 16 16" fill="none">
+              <Path d="M6 3l5 5-5 5" stroke={colors.primary} strokeWidth={1.5} strokeLinecap="round" strokeLinejoin="round" />
+            </Svg>
+          </Pressable>
         </View>
       </View>
     );

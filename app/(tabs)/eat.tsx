@@ -1,11 +1,13 @@
 import React, { useState } from 'react';
-import { ScrollView, View, Text, Pressable, Alert, RefreshControl } from 'react-native';
+import { ScrollView, View, Text, Pressable, Alert, RefreshControl, ActivityIndicator } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import Svg, { Circle, Path } from 'react-native-svg';
 import * as Haptics from 'expo-haptics';
 import { router } from 'expo-router';
 import { colors } from '@/lib/theme';
 import { useNutritionStore } from '@/stores/useNutritionStore';
+import { useUserStore } from '@/stores/useUserStore';
+import { getAIMealSuggestion } from '@/lib/workoutEngine';
 
 function CalorieRing() {
   const { calorieTarget, totalCalories, totalProtein, totalCarbs, totalFat, proteinTarget, carbsTarget, fatTarget } = useNutritionStore();
@@ -51,9 +53,9 @@ function CalorieRing() {
 }
 
 function WaterTracker() {
-  const [glasses, setGlasses] = useState(0);
+  const { waterGlasses, setWaterGlasses } = useNutritionStore();
   const target = 8;
-  const progress = Math.min(glasses / target, 1);
+  const progress = Math.min(waterGlasses / target, 1);
 
   return (
     <View style={{ marginHorizontal: 20, marginTop: 8, padding: 16, borderRadius: 16, backgroundColor: colors.surface, borderWidth: 1, borderColor: 'rgba(255,255,255,0.04)' }}>
@@ -66,18 +68,18 @@ function WaterTracker() {
           </View>
           <View>
             <Text style={{ fontFamily: 'DMSans-SemiBold', fontSize: 14, color: colors.textPrimary }}>Water</Text>
-            <Text style={{ fontFamily: 'DMSans', fontSize: 12, color: colors.textTertiary }}>{glasses}/{target} glasses</Text>
+            <Text style={{ fontFamily: 'DMSans', fontSize: 12, color: colors.textTertiary }}>{waterGlasses}/{target} glasses</Text>
           </View>
         </View>
         <View style={{ flexDirection: 'row', gap: 8 }}>
           <Pressable
-            onPress={() => { if (glasses > 0) { setGlasses(glasses - 1); Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light); } }}
+            onPress={() => { if (waterGlasses > 0) { setWaterGlasses(waterGlasses - 1); Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light); } }}
             style={{ width: 32, height: 32, borderRadius: 8, backgroundColor: colors.elevated, alignItems: 'center', justifyContent: 'center' }}
           >
             <Text style={{ fontFamily: 'DMSans-Bold', fontSize: 16, color: colors.textSecondary }}>-</Text>
           </Pressable>
           <Pressable
-            onPress={() => { setGlasses(glasses + 1); Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light); }}
+            onPress={() => { setWaterGlasses(waterGlasses + 1); Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light); }}
             style={{ width: 32, height: 32, borderRadius: 8, backgroundColor: 'rgba(96, 165, 250, 0.15)', alignItems: 'center', justifyContent: 'center' }}
           >
             <Text style={{ fontFamily: 'DMSans-Bold', fontSize: 16, color: '#60A5FA' }}>+</Text>
@@ -165,6 +167,106 @@ function EmptyMeals() {
   );
 }
 
+function AIMealSuggestionCard() {
+  const { remainingCalories, totalProtein, totalCarbs, totalFat, proteinTarget, carbsTarget, fatTarget } = useNutritionStore();
+  const { goals } = useUserStore();
+  const remaining = remainingCalories();
+  const [suggestion, setSuggestion] = useState<{ mealName: string; description: string; calories: number; protein: number; carbs: number; fat: number } | null>(null);
+  const [loading, setLoading] = useState(false);
+
+  const handleGetSuggestion = async () => {
+    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+    setLoading(true);
+    try {
+      // Determine meal type based on time of day
+      const hour = new Date().getHours();
+      let mealType = 'snack';
+      if (hour < 10) mealType = 'breakfast';
+      else if (hour < 14) mealType = 'lunch';
+      else if (hour < 20) mealType = 'dinner';
+
+      const result = await getAIMealSuggestion({
+        remainingCalories: remaining,
+        remainingProtein: proteinTarget - totalProtein(),
+        remainingCarbs: carbsTarget - totalCarbs(),
+        remainingFat: fatTarget - totalFat(),
+        mealType,
+        goal: goals.join(', ') || 'General Fitness',
+      });
+      setSuggestion(result);
+    } catch {
+      setSuggestion({
+        mealName: 'Grilled Chicken Bowl',
+        description: 'Grilled chicken breast over brown rice with steamed vegetables.',
+        calories: Math.round(remaining * 0.4),
+        protein: Math.round((proteinTarget - totalProtein()) * 0.4),
+        carbs: Math.round((carbsTarget - totalCarbs()) * 0.4),
+        fat: Math.round((fatTarget - totalFat()) * 0.4),
+      });
+    }
+    setLoading(false);
+  };
+
+  if (remaining <= 0) return null;
+
+  return (
+    <View style={{ marginHorizontal: 20, marginTop: 8, gap: 8 }}>
+      {!suggestion ? (
+        <Pressable
+          onPress={handleGetSuggestion}
+          disabled={loading}
+          style={{ padding: 14, paddingHorizontal: 16, borderRadius: 12, backgroundColor: colors.surface, borderWidth: 1, borderColor: 'rgba(255,255,255,0.04)', flexDirection: 'row', alignItems: 'center', gap: 10 }}
+        >
+          <View style={{ width: 32, height: 32, borderRadius: 10, backgroundColor: colors.primaryMuted, alignItems: 'center', justifyContent: 'center' }}>
+            {loading ? <ActivityIndicator size="small" color={colors.primary} /> : <Text style={{ fontFamily: 'DMSans-Bold', fontSize: 14, color: colors.primary }}>AI</Text>}
+          </View>
+          <View style={{ flex: 1 }}>
+            <Text style={{ fontFamily: 'DMSans-SemiBold', fontSize: 14, color: colors.textPrimary }}>{loading ? 'Finding a meal...' : 'Get a meal idea'}</Text>
+            <Text style={{ fontFamily: 'DMSans', fontSize: 12, color: colors.textTertiary }}>AI-powered suggestion based on your remaining macros</Text>
+          </View>
+          {!loading && (
+            <Svg width={12} height={12} viewBox="0 0 12 12" fill="none">
+              <Path d="M4.5 2.5l4 3.5-4 3.5" stroke={colors.textTertiary} strokeWidth={1.5} strokeLinecap="round" strokeLinejoin="round" />
+            </Svg>
+          )}
+        </Pressable>
+      ) : (
+        <View style={{ padding: 16, borderRadius: 14, backgroundColor: colors.surface, borderWidth: 1, borderColor: 'rgba(232, 168, 56, 0.12)', gap: 12 }}>
+          <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-start' }}>
+            <View style={{ flex: 1, gap: 4 }}>
+              <Text style={{ fontFamily: 'DMSans-Medium', fontSize: 11, color: colors.primary, textTransform: 'uppercase', letterSpacing: 0.7 }}>AI Suggestion</Text>
+              <Text style={{ fontFamily: 'DMSans-Bold', fontSize: 16, color: colors.textPrimary }}>{suggestion.mealName}</Text>
+            </View>
+            <View style={{ paddingHorizontal: 10, paddingVertical: 4, borderRadius: 8, backgroundColor: colors.primaryMuted }}>
+              <Text style={{ fontFamily: 'JetBrainsMono-Bold', fontSize: 13, color: colors.primary }}>{suggestion.calories} kcal</Text>
+            </View>
+          </View>
+          <Text style={{ fontFamily: 'DMSans', fontSize: 13, lineHeight: 19, color: colors.textSecondary }}>{suggestion.description}</Text>
+          <View style={{ flexDirection: 'row', gap: 16 }}>
+            <Text style={{ fontFamily: 'DMSans-Medium', fontSize: 12, color: colors.success }}>P {suggestion.protein}g</Text>
+            <Text style={{ fontFamily: 'DMSans-Medium', fontSize: 12, color: colors.primary }}>C {suggestion.carbs}g</Text>
+            <Text style={{ fontFamily: 'DMSans-Medium', fontSize: 12, color: colors.warning }}>F {suggestion.fat}g</Text>
+          </View>
+          <View style={{ flexDirection: 'row', gap: 8 }}>
+            <Pressable
+              onPress={() => setSuggestion(null)}
+              style={{ flex: 1, paddingVertical: 10, borderRadius: 10, alignItems: 'center', backgroundColor: colors.elevated }}
+            >
+              <Text style={{ fontFamily: 'DMSans-SemiBold', fontSize: 13, color: colors.textSecondary }}>Try Another</Text>
+            </Pressable>
+            <Pressable
+              onPress={() => { router.push('/chat'); }}
+              style={{ flex: 1, paddingVertical: 10, borderRadius: 10, alignItems: 'center', backgroundColor: colors.primaryMuted }}
+            >
+              <Text style={{ fontFamily: 'DMSans-SemiBold', fontSize: 13, color: colors.primary }}>Ask Coach</Text>
+            </Pressable>
+          </View>
+        </View>
+      )}
+    </View>
+  );
+}
+
 export default function EatScreen() {
   const { meals, remainingCalories, totalProtein, proteinTarget, removeMeal } = useNutritionStore();
   const remaining = remainingCalories();
@@ -225,6 +327,9 @@ export default function EatScreen() {
             {proteinLeft > 0 ? `You need ~${proteinLeft}g more protein to hit your target.` : 'Protein target reached!'}
           </Text>
         </View>
+
+        {/* AI Meal Suggestion */}
+        <AIMealSuggestionCard />
 
         <View style={{ height: 20 }} />
       </ScrollView>
