@@ -192,6 +192,8 @@ export const useChatStore = create<ChatState>((set, get) => ({
   },
 
   sendUserMessage: async (text: string) => {
+    if (get().isLoading) return; // Prevent concurrent sends
+
     const userMessage: ChatMessage = {
       id: Date.now().toString(),
       role: 'user',

@@ -33,9 +33,9 @@ export async function updateProfile(updates: Record<string, any>) {
 // ============================================
 
 export async function fetchTodayWorkout() {
-  // Use UTC date boundaries to avoid timezone drift
-  const now = new Date();
-  const todayUTC = new Date(Date.UTC(now.getFullYear(), now.getMonth(), now.getDate()));
+  // Use local date boundaries to avoid timezone mismatch
+  const today = new Date();
+  const startOfDay = new Date(today.getFullYear(), today.getMonth(), today.getDate());
 
   const { data, error } = await supabase
     .from('workouts')
@@ -46,7 +46,7 @@ export async function fetchTodayWorkout() {
         completed_sets (*)
       )
     `)
-    .gte('started_at', todayUTC.toISOString())
+    .gte('started_at', startOfDay.toISOString())
     .order('started_at', { ascending: false })
     .limit(1)
     .single();
@@ -83,7 +83,7 @@ export async function logSet(
       set_number: setNumber,
       weight,
       reps,
-      rpe,
+      rpe: rpe != null ? (10 - rpe) : null,
       is_warmup: extras?.isWarmup || false,
       rir: rpe,
       per_side: extras?.perSide || false,
@@ -128,8 +128,9 @@ export async function completeWorkout(
 // ============================================
 
 export async function fetchTodayMeals() {
-  const now = new Date();
-  const todayUTC = new Date(Date.UTC(now.getFullYear(), now.getMonth(), now.getDate()));
+  // Use local date boundaries to avoid timezone mismatch
+  const today = new Date();
+  const startOfDay = new Date(today.getFullYear(), today.getMonth(), today.getDate());
 
   const { data, error } = await supabase
     .from('meals')
@@ -137,7 +138,7 @@ export async function fetchTodayMeals() {
       *,
       food_items (*)
     `)
-    .gte('logged_at', todayUTC.toISOString())
+    .gte('logged_at', startOfDay.toISOString())
     .order('logged_at', { ascending: true });
 
   if (error) throw error;

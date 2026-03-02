@@ -153,7 +153,11 @@ const INITIAL_STATE = {
 export const useProgressStore = create<ProgressState>((set, get) => ({
   ...INITIAL_STATE,
 
-  setPeriod: (period) => set({ period }),
+  setPeriod: (period) => {
+    set({ period });
+    // Re-load progress data with new period
+    get().loadProgress();
+  },
 
   updateKeyLift: ({ name, weight }) => {
     set((state) => {
@@ -182,11 +186,15 @@ export const useProgressStore = create<ProgressState>((set, get) => ({
 
   loadProgress: async () => {
     try {
+      const { period } = get();
+      const historyLimit = period === 'week' ? 14 : period === 'month' ? 60 : 200;
+      const weightLimit = period === 'week' ? 7 : period === 'month' ? 30 : 90;
+
       const [lifts, metrics, history, weightCheckins] = await Promise.all([
         fetchKeyLifts().catch(() => []),
         fetchBodyMetrics(1).catch(() => []),
-        fetchWorkoutHistory(50).catch(() => []),
-        fetchWeightCheckins(30).catch(() => []),
+        fetchWorkoutHistory(historyLimit).catch(() => []),
+        fetchWeightCheckins(weightLimit).catch(() => []),
       ]);
 
       const updates: Record<string, any> = {};

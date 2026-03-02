@@ -93,8 +93,16 @@ export const useAuthStore = create<AuthState>((set, get) => ({
           name,
           updated_at: new Date().toISOString(),
         }, { onConflict: 'id' });
-        // Pre-populate name in user store
-        useUserStore.getState().updateProfile({ name } as any);
+
+        // Load the full profile back and populate user store
+        const { data: profile } = await supabase
+          .from('profiles')
+          .select('*')
+          .eq('id', data.user.id)
+          .single();
+        if (profile) {
+          useUserStore.getState().setProfile(profile);
+        }
       } catch {}
     }
 

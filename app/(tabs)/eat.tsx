@@ -14,7 +14,7 @@ function CalorieRing() {
   const consumed = totalCalories();
   const progress = calorieTarget > 0 ? Math.min(consumed / calorieTarget, 1) : 0;
   const circumference = 2 * Math.PI * 68;
-  const offset = circumference * (1 - progress);
+  const offset = Math.max(circumference * (1 - progress), 0);
 
   const macros = [
     { label: 'Protein', value: totalProtein(), target: proteinTarget, color: colors.success },
@@ -270,7 +270,7 @@ function AIMealSuggestionCard() {
 export default function EatScreen() {
   const { meals, remainingCalories, totalProtein, proteinTarget, removeMeal } = useNutritionStore();
   const remaining = remainingCalories();
-  const proteinLeft = proteinTarget - totalProtein();
+  const proteinLeft = Math.max(proteinTarget - totalProtein(), 0);
   const [refreshing, setRefreshing] = useState(false);
 
   const handleRefresh = async () => {
@@ -324,7 +324,7 @@ export default function EatScreen() {
         <View style={{ marginHorizontal: 20, marginTop: 8, padding: 14, paddingHorizontal: 16, borderRadius: 12, backgroundColor: 'rgba(232, 168, 56, 0.06)', borderWidth: 1, borderColor: 'rgba(232, 168, 56, 0.1)', gap: 6 }}>
           <Text style={{ fontFamily: 'DMSans-SemiBold', fontSize: 13, color: colors.primary }}>{remaining > 0 ? `${remaining.toLocaleString()} kcal remaining` : 'Calorie target reached!'}</Text>
           <Text style={{ fontFamily: 'DMSans', fontSize: 12, lineHeight: 18, color: colors.textSecondary }}>
-            {proteinLeft > 0 ? `You need ~${proteinLeft}g more protein to hit your target.` : 'Protein target reached!'}
+            {proteinLeft > 0 ? `You need ~${proteinLeft}g more protein to hit your target.` : `Protein target reached!`}
           </Text>
         </View>
 

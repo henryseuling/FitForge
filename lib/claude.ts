@@ -6,11 +6,12 @@ import { AI_TOOLS } from './aiTools';
 import type { Exercise } from '@/stores/useWorkoutStore';
 import type { Meal } from '@/stores/useNutritionStore';
 import type { KeyLift } from '@/stores/useProgressStore';
+import Constants from 'expo-constants';
 
 const CLAUDE_API_URL = 'https://api.anthropic.com/v1/messages';
 
-// TODO: Move to backend — never ship API keys in a mobile app
-const API_KEY = process.env.EXPO_PUBLIC_CLAUDE_API_KEY || '';
+// TODO: Move to a Supabase Edge Function in production — never ship API keys in a mobile app
+const API_KEY = Constants.expoConfig?.extra?.claudeApiKey || process.env.EXPO_PUBLIC_CLAUDE_API_KEY || '';
 
 export interface Message {
   role: 'user' | 'assistant';
@@ -149,7 +150,7 @@ export async function sendMessage(
         'anthropic-version': '2023-06-01',
       },
       body: JSON.stringify({
-        model: 'claude-sonnet-4-6',
+        model: 'claude-sonnet-4-20250514',
         max_tokens: 1024,
         system: systemPrompt,
         tools: AI_TOOLS,
@@ -238,7 +239,7 @@ export async function sendToolResults(
         'anthropic-version': '2023-06-01',
       },
       body: JSON.stringify({
-        model: 'claude-sonnet-4-6',
+        model: 'claude-sonnet-4-20250514',
         max_tokens: 1024,
         system: systemPrompt,
         tools: AI_TOOLS,

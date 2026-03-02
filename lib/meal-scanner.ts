@@ -1,8 +1,10 @@
 // Meal photo analysis using Claude Vision API
-// NOTE: In production, send the image to your backend server
+// NOTE: In production, send the image to your backend/Supabase Edge Function
+
+import Constants from 'expo-constants';
 
 const CLAUDE_API_URL = 'https://api.anthropic.com/v1/messages';
-const API_KEY = process.env.EXPO_PUBLIC_CLAUDE_API_KEY || '';
+const API_KEY = Constants.expoConfig?.extra?.claudeApiKey || process.env.EXPO_PUBLIC_CLAUDE_API_KEY || '';
 
 export interface ScannedMeal {
   name: string;
@@ -31,7 +33,7 @@ export async function analyzeMealPhoto(base64Image: string): Promise<ScannedMeal
         'anthropic-version': '2023-06-01',
       },
       body: JSON.stringify({
-        model: 'claude-sonnet-4-6',
+        model: 'claude-sonnet-4-20250514',
         max_tokens: 1024,
         messages: [
           {
@@ -84,11 +86,19 @@ Be accurate with portion estimates. Round macros to whole numbers.`,
     const data = await response.json();
     const text = data.content[0].text;
 
-    // Parse JSON from response, handling possible markdown wrapping
-    const jsonMatch = text.match(/\{[\s\S]*\}/);
-    if (!jsonMatch) throw new Error('No JSON in response');
-
-    return JSON.parse(jsonMatch[0]) as ScannedMeal;
+    // Parse JSON robustly from response
+    let parsed: ScannedMeal;
+    try {
+      parsed = JSON.parse(text);
+    } catch {
+      const jsonMatch = text.match(/\{[\s\S]*\}/);
+      if (!jsonMatch) throw new Error('No JSON found in response');
+      parsed = JSON.parse(jsonMatch[0]);
+    }
+    if (!parsed.name || !parsed.foods || !Array.isArray(parsed.foods)) {
+      throw new Error('Invalid meal data structure');
+    }
+    return parsed;
   } catch (error) {
     console.error('Meal analysis error:', error);
     throw new Error('Could not analyze meal photo. Please try again.');

@@ -6,7 +6,7 @@ import AppleHealthKit, {
 const permissions: HealthKitPermissions = {
   permissions: {
     read: [
-      AppleHealthKit.Constants.Permissions.HeartRateVariabilitySDNN,
+      AppleHealthKit.Constants.Permissions.HeartRateVariability,
       AppleHealthKit.Constants.Permissions.RestingHeartRate,
       AppleHealthKit.Constants.Permissions.SleepAnalysis,
       AppleHealthKit.Constants.Permissions.Workout,

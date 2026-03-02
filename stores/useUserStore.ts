@@ -23,6 +23,7 @@ export interface UserData {
 }
 
 interface UserState extends UserData {
+  setProfile: (profile: Record<string, any>) => void;
   updateProfile: (updates: Partial<UserData>) => void;
   toggleProgressiveOverload: () => void;
   toggleUnits: () => void;
@@ -57,6 +58,26 @@ const INITIAL_STATE: UserData = {
 
 export const useUserStore = create<UserState>((set) => ({
   ...INITIAL_STATE,
+
+  setProfile: (profile: Record<string, any>) => {
+    set({
+      name: profile.name || '',
+      level: profile.level || '',
+      height: profile.height || '',
+      weight: typeof profile.weight === 'string' ? parseFloat(profile.weight) || 0 : profile.weight || 0,
+      age: profile.age || 0,
+      gender: profile.gender || '',
+      trainingSplit: profile.split || profile.training_split || '',
+      macroSplit: profile.macro_split || '',
+      restTimerDuration: profile.rest_timer_duration || 90,
+      progressiveOverload: profile.progressive_overload ?? true,
+      goals: profile.goals || [],
+      equipment: profile.equipment || [],
+      frequency: profile.frequency || 0,
+      units: profile.units || 'imperial',
+      notifications: profile.notifications ?? true,
+    });
+  },
 
   updateProfile: (updates) => {
     set((state) => ({ ...state, ...updates }));

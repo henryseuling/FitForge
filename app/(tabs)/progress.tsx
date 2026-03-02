@@ -36,7 +36,7 @@ function PeriodSelector() {
 
 function MStrengthCard() {
   const { mStrengthScore, mStrengthDelta, mStrengthTier, mStrengthNextTier } = useProgressStore();
-  const progress = mStrengthNextTier > 0 ? mStrengthScore / mStrengthNextTier : 0;
+  const progress = mStrengthNextTier > 0 ? Math.min(mStrengthScore / mStrengthNextTier, 1) : 0;
 
   return (
     <View style={{ marginHorizontal: 20, marginTop: 8, padding: 20, borderRadius: 16, backgroundColor: colors.surface, borderWidth: 1, borderColor: 'rgba(232, 168, 56, 0.15)', gap: 16 }}>
@@ -524,6 +524,7 @@ function ExerciseProfilesSection() {
 
 export default function ProgressScreen() {
   const [refreshing, setRefreshing] = useState(false);
+  const keyLiftsCount = useProgressStore((s) => s.keyLifts.length);
 
   const handleRefresh = async () => {
     setRefreshing(true);
@@ -560,7 +561,7 @@ export default function ProgressScreen() {
           <Text style={{ fontFamily: 'DMSans', fontSize: 12, color: colors.textSecondary }}>Est. 1RM</Text>
         </View>
 
-        {useProgressStore.getState().keyLifts.length === 0 ? (
+        {keyLiftsCount === 0 ? (
           <View style={{ marginHorizontal: 20, padding: 24, borderRadius: 16, backgroundColor: colors.surface, borderWidth: 1, borderColor: 'rgba(255,255,255,0.04)', alignItems: 'center', gap: 8 }}>
             <Text style={{ fontFamily: 'DMSans-SemiBold', fontSize: 14, color: colors.textPrimary }}>No lift data yet</Text>
             <Text style={{ fontFamily: 'DMSans', fontSize: 13, color: colors.textTertiary, textAlign: 'center' }}>Log your key lifts through workouts or ask your AI coach to record them.</Text>

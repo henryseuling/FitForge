@@ -80,22 +80,22 @@ export default function ChatScreen() {
         {/* Header */}
         <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', paddingHorizontal: 20, paddingTop: 16, paddingBottom: 8 }}>
           <Text style={{ fontFamily: 'DMSans-Bold', fontSize: 28, color: colors.textPrimary, letterSpacing: -0.8 }}>Chat</Text>
-          {workoutName ? (
-            <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
-              <View style={{ width: 6, height: 6, borderRadius: 3, backgroundColor: colors.success }} />
-              <Text style={{ fontFamily: 'DMSans', fontSize: 12, color: colors.textTertiary }}>Workout loaded</Text>
-            </View>
-          ) : null}
+          <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
+            <View style={{ width: 6, height: 6, borderRadius: 3, backgroundColor: workoutName ? colors.success : colors.textTertiary }} />
+            <Text style={{ fontFamily: 'DMSans', fontSize: 12, color: colors.textTertiary }}>
+              {workoutName ? 'Workout loaded' : 'No workout loaded'}
+            </Text>
+          </View>
         </View>
 
         {/* Context Pill */}
-        {workoutName ? (
-          <View style={{ alignItems: 'center', paddingVertical: 6 }}>
-            <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6, paddingVertical: 6, paddingHorizontal: 14, borderRadius: 100, backgroundColor: 'rgba(232, 168, 56, 0.08)', borderWidth: 1, borderColor: 'rgba(232, 168, 56, 0.12)' }}>
-              <Text style={{ fontFamily: 'DMSans-Medium', fontSize: 12, color: colors.primary, letterSpacing: 0.3 }}>{workoutName} · Day {dayNumber}</Text>
-            </View>
+        <View style={{ alignItems: 'center', paddingVertical: 6 }}>
+          <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6, paddingVertical: 6, paddingHorizontal: 14, borderRadius: 100, backgroundColor: 'rgba(232, 168, 56, 0.08)', borderWidth: 1, borderColor: 'rgba(232, 168, 56, 0.12)' }}>
+            <Text style={{ fontFamily: 'DMSans-Medium', fontSize: 12, color: colors.primary, letterSpacing: 0.3 }}>
+              {workoutName ? `${workoutName} · Day ${dayNumber}` : 'No active workout'}
+            </Text>
           </View>
-        ) : null}
+        </View>
 
         {/* Messages */}
         <ScrollView ref={scrollRef} style={{ flex: 1 }} showsVerticalScrollIndicator={false} contentContainerStyle={{ paddingBottom: 8 }}>
