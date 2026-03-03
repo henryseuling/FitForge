@@ -151,10 +151,11 @@ function CardioModal({ visible, onClose, onAdd }: { visible: boolean; onClose: (
   const [duration, setDuration] = useState('');
   const [details, setDetails] = useState('');
 
+  useEffect(() => { if (!visible) { setType(''); setDuration(''); setDetails(''); } }, [visible]);
+
   const handleAdd = () => {
     if (!type || !duration) return;
     onAdd({ id: `cardio-${Date.now()}`, type, duration: parseInt(duration) || 0, details });
-    setType(''); setDuration(''); setDetails('');
     onClose();
     Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
   };
@@ -194,10 +195,11 @@ function RecoveryModal({ visible, onClose, onAdd }: { visible: boolean; onClose:
   const [duration, setDuration] = useState('');
   const [details, setDetails] = useState('');
 
+  useEffect(() => { if (!visible) { setType(''); setDuration(''); setDetails(''); } }, [visible]);
+
   const handleAdd = () => {
     if (!type || !duration) return;
     onAdd({ id: `recovery-${Date.now()}`, type, duration: parseInt(duration) || 0, details });
-    setType(''); setDuration(''); setDetails('');
     onClose();
     Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
   };
@@ -745,7 +747,7 @@ export default function ActiveWorkoutScreen() {
       </View>
 
       {/* Exercises List */}
-      <ScrollView ref={scrollRef} showsVerticalScrollIndicator={false}>
+      <ScrollView ref={scrollRef} showsVerticalScrollIndicator={false} keyboardShouldPersistTaps="handled">
         {exercises.map((exercise, index) => (
           <Pressable key={exercise.id} onPress={() => setActiveExercise(index)}>
             <ExerciseCard exercise={exercise} isActive={index === activeExerciseIndex} onSetComplete={handleSetComplete} supersetLabel={supersetLabels[exercise.id]} />

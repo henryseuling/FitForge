@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { View, Text, TextInput, Pressable, Modal } from 'react-native';
+import { View, Text, TextInput, Pressable, Modal, ScrollView } from 'react-native';
 import Svg, { Path } from 'react-native-svg';
 import * as Haptics from 'expo-haptics';
 import { colors } from '@/lib/theme';
@@ -57,7 +57,7 @@ export default function SetLogger({ exercise, visible, onClose, onLog }: SetLogg
   return (
     <Modal visible={visible} transparent animationType="slide">
       <Pressable style={{ flex: 1, backgroundColor: 'rgba(0,0,0,0.6)' }} onPress={onClose} />
-      <View style={{ backgroundColor: colors.surface, borderTopLeftRadius: 24, borderTopRightRadius: 24, paddingTop: 12, paddingBottom: 40, paddingHorizontal: 24 }}>
+      <ScrollView scrollEnabled={false} keyboardShouldPersistTaps="handled" contentContainerStyle={{ backgroundColor: colors.surface, borderTopLeftRadius: 24, borderTopRightRadius: 24, paddingTop: 12, paddingBottom: 40, paddingHorizontal: 24 }}>
         {/* Handle */}
         <View style={{ alignSelf: 'center', width: 36, height: 4, borderRadius: 2, backgroundColor: colors.elevated, marginBottom: 20 }} />
 
@@ -153,7 +153,7 @@ export default function SetLogger({ exercise, visible, onClose, onLog }: SetLogg
             Log Set {nextSetNumber}
           </Text>
         </Pressable>
-      </View>
+      </ScrollView>
     </Modal>
   );
 }

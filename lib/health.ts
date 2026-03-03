@@ -155,7 +155,7 @@ export async function getReadinessScore(): Promise<{
 
   // Compute readiness from available data, fall back to defaults
   const hrvScore = hrv ? Math.min((hrv / 80) * 100, 100) : 70;
-  const hrScore = restingHR ? Math.max(100 - (restingHR - 50) * 2, 40) : 70;
+  const hrScore = restingHR ? Math.max(100 - (restingHR - 60) * 1.5, 40) : 70;
   const sleepScoreVal = sleep?.score ?? 70;
   const recovery = Math.round((hrvScore + hrScore) / 2);
 

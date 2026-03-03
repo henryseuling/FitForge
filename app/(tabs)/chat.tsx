@@ -98,7 +98,7 @@ export default function ChatScreen() {
         </View>
 
         {/* Messages */}
-        <ScrollView ref={scrollRef} style={{ flex: 1 }} showsVerticalScrollIndicator={false} contentContainerStyle={{ paddingBottom: 8 }}>
+        <ScrollView ref={scrollRef} style={{ flex: 1 }} showsVerticalScrollIndicator={false} keyboardShouldPersistTaps="handled" contentContainerStyle={{ paddingBottom: 8 }}>
           {messages.map((msg) => (
             <MessageBubble key={msg.id} message={msg} />
           ))}
@@ -112,7 +112,7 @@ export default function ChatScreen() {
         </ScrollView>
 
         {/* Quick Actions */}
-        <ScrollView horizontal showsHorizontalScrollIndicator={false} style={{ maxHeight: 48 }} contentContainerStyle={{ paddingHorizontal: 20, paddingVertical: 6, gap: 8, flexDirection: 'row' }}>
+        <ScrollView horizontal showsHorizontalScrollIndicator={false} keyboardShouldPersistTaps="handled" style={{ maxHeight: 48 }} contentContainerStyle={{ paddingHorizontal: 20, paddingVertical: 6, gap: 8, flexDirection: 'row' }}>
           {quickActions.map((action) => (
             <QuickAction key={action.label} label={action.label} onPress={() => handleSend(action.message)} />
           ))}

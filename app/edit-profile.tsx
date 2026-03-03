@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { View, Text, TextInput, Pressable, ScrollView, KeyboardAvoidingView, Platform } from 'react-native';
+import { View, Text, TextInput, Pressable, ScrollView, KeyboardAvoidingView, Platform, Alert } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { router } from 'expo-router';
 import * as Haptics from 'expo-haptics';
@@ -26,8 +26,9 @@ export default function EditProfileScreen() {
   const GENDERS = ['Male', 'Female', 'Other', 'Prefer not to say'];
 
   const handleSave = () => {
+    if (!name.trim()) { Alert.alert('Missing Info', 'Name is required.'); return; }
     useUserStore.getState().updateProfile({
-      name,
+      name: name.trim(),
       height,
       weight: parseFloat(weight) || 0,
       age: parseInt(age) || 0,
@@ -111,7 +112,7 @@ export default function EditProfileScreen() {
           </Pressable>
         </View>
 
-        <ScrollView contentContainerStyle={{ paddingHorizontal: 20, paddingBottom: 40, gap: 24 }} showsVerticalScrollIndicator={false}>
+        <ScrollView contentContainerStyle={{ paddingHorizontal: 20, paddingBottom: 40, gap: 24 }} showsVerticalScrollIndicator={false} keyboardShouldPersistTaps="handled">
           {/* Personal */}
           <View style={{ gap: 12 }}>
             <Text style={{ fontFamily: 'DMSans-SemiBold', fontSize: 16, color: colors.textPrimary }}>Personal</Text>

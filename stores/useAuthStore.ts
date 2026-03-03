@@ -132,8 +132,8 @@ export const useAuthStore = create<AuthState>((set, get) => ({
       }
     }
 
-    resetAllStores();
     set({ session: data.session, user: data.user, isOnboarded: onboarded });
+    resetAllStores();
     return { error: null };
   },
 

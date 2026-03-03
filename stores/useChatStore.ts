@@ -195,7 +195,7 @@ export const useChatStore = create<ChatState>((set, get) => ({
     if (get().isLoading) return; // Prevent concurrent sends
 
     const userMessage: ChatMessage = {
-      id: Date.now().toString(),
+      id: `${Date.now()}-${Math.random().toString(36).slice(2, 9)}`,
       role: 'user',
       content: text,
       timestamp: new Date().toLocaleTimeString('en-US', {
@@ -237,7 +237,7 @@ export const useChatStore = create<ChatState>((set, get) => ({
       const finalText = replyText || '';
 
       const assistantMessage: ChatMessage = {
-        id: (Date.now() + 1).toString(),
+        id: `${Date.now()}-${Math.random().toString(36).slice(2, 9)}`,
         role: 'assistant',
         content: finalText,
         timestamp: new Date().toLocaleTimeString('en-US', {
@@ -256,7 +256,7 @@ export const useChatStore = create<ChatState>((set, get) => ({
     } catch (err) {
       console.error('Chat error:', err);
       const errorMessage: ChatMessage = {
-        id: (Date.now() + 1).toString(),
+        id: `${Date.now()}-${Math.random().toString(36).slice(2, 9)}`,
         role: 'assistant',
         content: "Sorry, I couldn't connect right now. Try again in a moment.",
         timestamp: new Date().toLocaleTimeString('en-US', {

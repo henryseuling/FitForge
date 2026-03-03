@@ -85,7 +85,7 @@ export async function logSet(
       reps,
       rpe: rpe != null ? (10 - rpe) : null,
       is_warmup: extras?.isWarmup || false,
-      rir: rpe,
+      rir: rpe != null ? rpe : null,
       per_side: extras?.perSide || false,
       is_bodyweight: extras?.bodyweight || false,
       note: extras?.note || null,

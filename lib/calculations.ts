@@ -72,7 +72,7 @@ export function computeSessionStats(exercises: Exercise[]): SessionStats {
       totalVolume += set.weight * set.reps;
 
       const muscle = ex.muscleGroup || 'Other';
-      volumeByMuscle[muscle] = (volumeByMuscle[muscle] || 0) + 1; // count sets per muscle
+      volumeByMuscle[muscle] = (volumeByMuscle[muscle] || 0) + set.weight * set.reps;
     }
   }
 

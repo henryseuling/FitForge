@@ -72,12 +72,12 @@ export const useNutritionStore = create<NutritionState>((set, get) => ({
     apiLogMeal(
       mealType,
       mealType,
-      meal.foods.map((f) => ({
+      meal.foods.map((f, i) => ({
         name: f.name,
         calories: f.calories,
-        protein: meal.protein > 0 ? Math.round(meal.protein / meal.foods.length) : 0,
-        carbs: meal.carbs > 0 ? Math.round(meal.carbs / meal.foods.length) : 0,
-        fat: meal.fat > 0 ? Math.round(meal.fat / meal.foods.length) : 0,
+        protein: i === 0 ? meal.protein : 0,
+        carbs: i === 0 ? meal.carbs : 0,
+        fat: i === 0 ? meal.fat : 0,
       }))
     ).catch(() => {});
   },
