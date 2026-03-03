@@ -175,13 +175,13 @@ export const useProgressStore = create<ProgressState>((set, get) => ({
       };
     });
     // Persist to Supabase
-    apiLogKeyLift(name, weight).catch(() => {});
+    apiLogKeyLift(name, weight).catch((err) => console.warn('Failed to persist key lift:', err));
   },
 
   logBodyWeight: (weight) => {
     set({ weight });
     // Persist to Supabase
-    logBodyMetric(weight).catch(() => {});
+    logBodyMetric(weight).catch((err) => console.warn('Failed to persist body metric:', err));
   },
 
   loadProgress: async () => {

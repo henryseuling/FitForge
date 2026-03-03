@@ -103,7 +103,7 @@ export const useAuthStore = create<AuthState>((set, get) => ({
         if (profile) {
           useUserStore.getState().setProfile(profile);
         }
-      } catch {}
+      } catch (err) { console.warn('Failed to create/load profile after sign up:', err); }
     }
 
     return { error: null };

@@ -210,7 +210,7 @@ export const useChatStore = create<ChatState>((set, get) => ({
     }));
 
     // Persist user message (fire-and-forget)
-    saveChatMessage('user', text).catch(() => {});
+    saveChatMessage('user', text).catch((err) => console.warn('Failed to persist user message:', err));
 
     try {
       const history: Message[] = get().messages.map((m) => ({
@@ -252,7 +252,7 @@ export const useChatStore = create<ChatState>((set, get) => ({
       }));
 
       // Persist assistant message (fire-and-forget)
-      saveChatMessage('assistant', finalText).catch(() => {});
+      saveChatMessage('assistant', finalText).catch((err) => console.warn('Failed to persist assistant message:', err));
     } catch (err) {
       console.error('Chat error:', err);
       const errorMessage: ChatMessage = {

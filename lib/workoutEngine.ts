@@ -4,13 +4,11 @@
 
 import { getExercisesByEquipment } from '@/constants/exercises';
 import type { Exercise, MuscleGroup, EquipmentType } from '@/constants/exercises';
-import Constants from 'expo-constants';
-
 // ── Constants ────────────────────────────────────────────────────
 
 const CLAUDE_API_URL = 'https://api.anthropic.com/v1/messages';
 // TODO: Move to a Supabase Edge Function in production
-const API_KEY = Constants.expoConfig?.extra?.claudeApiKey || process.env.EXPO_PUBLIC_CLAUDE_API_KEY || '';
+const API_KEY = process.env.EXPO_PUBLIC_CLAUDE_API_KEY || '';
 const MODEL = 'claude-sonnet-4-20250514';
 
 // ── Types ────────────────────────────────────────────────────────

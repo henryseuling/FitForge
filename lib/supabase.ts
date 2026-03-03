@@ -9,15 +9,15 @@ const ExpoSecureStoreAdapter = {
   removeItem: (key: string) => SecureStore.deleteItemAsync(key),
 };
 
-// Read from app.json extra (guaranteed at build time), fall back to process.env
+// Read from .env (EXPO_PUBLIC_ vars are embedded at build time by Expo)
 const SUPABASE_URL =
-  Constants.expoConfig?.extra?.supabaseUrl ||
   process.env.EXPO_PUBLIC_SUPABASE_URL ||
+  Constants.expoConfig?.extra?.supabaseUrl ||
   '';
 
 const SUPABASE_ANON_KEY =
-  Constants.expoConfig?.extra?.supabaseAnonKey ||
   process.env.EXPO_PUBLIC_SUPABASE_ANON_KEY ||
+  Constants.expoConfig?.extra?.supabaseAnonKey ||
   '';
 
 if (!SUPABASE_URL || !SUPABASE_ANON_KEY) {

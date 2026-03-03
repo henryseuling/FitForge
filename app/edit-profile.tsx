@@ -66,6 +66,7 @@ export default function EditProfileScreen() {
         placeholder={placeholder}
         placeholderTextColor={colors.textTertiary}
         keyboardType={keyboardType || 'default'}
+        accessibilityLabel={placeholder}
         style={{
           fontFamily: 'DMSans', fontSize: 15, color: colors.textPrimary,
           backgroundColor: colors.surface, borderRadius: 12, paddingHorizontal: 16, paddingVertical: 14,
@@ -82,6 +83,9 @@ export default function EditProfileScreen() {
           <Pressable
             key={opt}
             onPress={() => { onSelect(opt); Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light); }}
+            accessibilityRole="radio"
+            accessibilityLabel={opt}
+            accessibilityState={{ selected: selected === opt }}
             style={{
               paddingVertical: 8, paddingHorizontal: 14, borderRadius: 100,
               backgroundColor: selected === opt ? colors.primary : colors.surface,
@@ -103,11 +107,11 @@ export default function EditProfileScreen() {
       <KeyboardAvoidingView style={{ flex: 1 }} behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
         {/* Header */}
         <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', paddingHorizontal: 20, paddingTop: 16, paddingBottom: 12 }}>
-          <Pressable onPress={() => router.back()}>
+          <Pressable onPress={() => router.back()} accessibilityRole="button" accessibilityLabel="Cancel editing profile">
             <Text style={{ fontFamily: 'DMSans-SemiBold', fontSize: 15, color: colors.textSecondary }}>Cancel</Text>
           </Pressable>
-          <Text style={{ fontFamily: 'DMSans-Bold', fontSize: 18, color: colors.textPrimary }}>Edit Profile</Text>
-          <Pressable onPress={handleSave}>
+          <Text accessibilityRole="header" style={{ fontFamily: 'DMSans-Bold', fontSize: 18, color: colors.textPrimary }}>Edit Profile</Text>
+          <Pressable onPress={handleSave} accessibilityRole="button" accessibilityLabel="Save profile changes">
             <Text style={{ fontFamily: 'DMSans-Bold', fontSize: 15, color: colors.primary }}>Save</Text>
           </Pressable>
         </View>

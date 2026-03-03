@@ -100,34 +100,34 @@ export const useUserStore = create<UserState>((set) => ({
     if (updates.units !== undefined) dbUpdates.units = updates.units;
     if (updates.notifications !== undefined) dbUpdates.notifications = updates.notifications;
     if (Object.keys(dbUpdates).length > 0) {
-      apiUpdateProfile(dbUpdates).catch(() => {});
+      apiUpdateProfile(dbUpdates).catch((err) => console.warn('Failed to persist profile:', err));
     }
   },
 
   toggleProgressiveOverload: () =>
     set((state) => {
       const next = !state.progressiveOverload;
-      apiUpdateProfile({ progressive_overload: next }).catch(() => {});
+      apiUpdateProfile({ progressive_overload: next }).catch((err) => console.warn('Failed to persist progressive overload:', err));
       return { progressiveOverload: next };
     }),
 
   toggleUnits: () =>
     set((state) => {
       const next = state.units === 'imperial' ? 'metric' : 'imperial';
-      apiUpdateProfile({ units: next }).catch(() => {});
+      apiUpdateProfile({ units: next }).catch((err) => console.warn('Failed to persist units:', err));
       return { units: next as 'imperial' | 'metric' };
     }),
 
   toggleNotifications: () =>
     set((state) => {
       const next = !state.notifications;
-      apiUpdateProfile({ notifications: next }).catch(() => {});
+      apiUpdateProfile({ notifications: next }).catch((err) => console.warn('Failed to persist notifications:', err));
       return { notifications: next };
     }),
 
   setRestTimerDuration: (seconds) => {
     set({ restTimerDuration: seconds });
-    apiUpdateProfile({ rest_timer_duration: seconds }).catch(() => {});
+    apiUpdateProfile({ rest_timer_duration: seconds }).catch((err) => console.warn('Failed to persist rest timer:', err));
   },
 
   loadProfile: async () => {

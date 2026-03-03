@@ -301,12 +301,16 @@ export default function EatScreen() {
           <View style={{ flexDirection: 'row', gap: 8 }}>
             <Pressable
               onPress={() => { Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light); router.push('/add-meal'); }}
+              accessibilityRole="button"
+              accessibilityLabel="Add meal manually"
               style={{ flexDirection: 'row', alignItems: 'center', gap: 6, paddingVertical: 6, paddingHorizontal: 12, borderRadius: 100, backgroundColor: colors.surface, borderWidth: 1, borderColor: 'rgba(255,255,255,0.06)' }}
             >
               <Text style={{ fontFamily: 'DMSans-SemiBold', fontSize: 12, color: colors.textSecondary }}>+ Add</Text>
             </Pressable>
             <Pressable
               onPress={() => { Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light); router.push('/camera'); }}
+              accessibilityRole="button"
+              accessibilityLabel="Snap a photo to log a meal"
               style={{ flexDirection: 'row', alignItems: 'center', gap: 6, paddingVertical: 6, paddingHorizontal: 12, borderRadius: 100, backgroundColor: colors.primary }}
             >
               <Text style={{ fontFamily: 'DMSans-SemiBold', fontSize: 12, color: colors.bg }}>Snap Meal</Text>

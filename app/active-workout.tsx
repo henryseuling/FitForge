@@ -691,7 +691,14 @@ export default function ActiveWorkoutScreen() {
     if (completedSets === 0) { Alert.alert('No sets logged', 'Complete at least one set before finishing.'); return; }
     if (workoutId && workoutStartedAt) {
       const durationMinutes = Math.floor((Date.now() - workoutStartedAt) / 60000);
-      try { await completeWorkout(workoutId, durationMinutes); } catch {}
+      try {
+        await completeWorkout(workoutId, durationMinutes, {
+          cardioData: cardioEntries.length > 0 ? cardioEntries : undefined,
+          saunaData: recoveryEntries.length > 0 ? recoveryEntries : undefined,
+        });
+      } catch (err) {
+        console.warn('Failed to save workout completion:', err);
+      }
     }
     setIsCompleted(true);
   };
@@ -715,14 +722,14 @@ export default function ActiveWorkoutScreen() {
 
       {/* Header */}
       <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingHorizontal: 20, paddingVertical: 12 }}>
-        <Pressable onPress={handleCancel}>
+        <Pressable onPress={handleCancel} accessibilityRole="button" accessibilityLabel="Cancel workout">
           <Text style={{ fontFamily: 'DMSans-SemiBold', fontSize: 15, color: colors.textSecondary }}>Cancel</Text>
         </Pressable>
-        <View style={{ alignItems: 'center' }}>
+        <View accessible accessibilityRole="header" style={{ alignItems: 'center' }}>
           <Text style={{ fontFamily: 'DMSans-Bold', fontSize: 16, color: colors.textPrimary }}>{workoutName}</Text>
           <ElapsedTimer startedAt={workoutStartedAt} />
         </View>
-        <Pressable onPress={handleFinishWorkout} style={{ paddingVertical: 6, paddingHorizontal: 12, borderRadius: 8, backgroundColor: allDone ? colors.success : colors.primary }}>
+        <Pressable onPress={handleFinishWorkout} accessibilityRole="button" accessibilityLabel="Finish workout" style={{ paddingVertical: 6, paddingHorizontal: 12, borderRadius: 8, backgroundColor: allDone ? colors.success : colors.primary }}>
           <Text style={{ fontFamily: 'DMSans-Bold', fontSize: 13, color: colors.bg }}>Finish</Text>
         </Pressable>
       </View>

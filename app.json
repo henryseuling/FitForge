@@ -57,9 +57,6 @@
       "typedRoutes": true
     },
     "extra": {
-      "supabaseUrl": "https://sopehnasvzeleoriztjd.supabase.co",
-      "supabaseAnonKey": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InNvcGVobmFzdnplbGVvcml6dGpkIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzIzMDA1NjYsImV4cCI6MjA4Nzg3NjU2Nn0.hXRSFxTK7ugsSd63l8Niy6TJA_wk-fQH_vy9PIvrwsw",
-      "claudeApiKey": "sk-ant-api03-aAvTdVpNFSCimDlkfq_G_I-NROvZW7Ty8sMU3M1P0nyb2J1JL0M-aFe-ld2Wdxv5mEyTp0dOPtZeILSqLjLqQ-1h0RQQAA",
       "router": {},
       "eas": {
         "projectId": "e02df1f0-9a88-47b0-9279-d4f35705a920"

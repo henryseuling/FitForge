@@ -79,13 +79,13 @@ export const useNutritionStore = create<NutritionState>((set, get) => ({
         carbs: i === 0 ? meal.carbs : 0,
         fat: i === 0 ? meal.fat : 0,
       }))
-    ).catch(() => {});
+    ).catch((err) => console.warn('Failed to persist meal:', err));
   },
 
   removeMeal: (mealId) => {
     set((state) => ({ meals: state.meals.filter((m) => m.id !== mealId) }));
     // Delete from Supabase
-    (async () => { try { await supabase.from('meals').delete().eq('id', mealId); } catch {} })();
+    (async () => { try { await supabase.from('meals').delete().eq('id', mealId); } catch (err) { console.warn('Failed to delete meal:', err); } })();
   },
 
   setWaterGlasses: (glasses) => {
@@ -100,7 +100,7 @@ export const useNutritionStore = create<NutritionState>((set, get) => ({
           { user_id: user.id, glasses, date: today },
           { onConflict: 'user_id,date' }
         );
-      } catch {}
+      } catch (err) { console.warn('Failed to persist water intake:', err); }
     })();
   },
 
@@ -112,7 +112,7 @@ export const useNutritionStore = create<NutritionState>((set, get) => ({
     if (targets.proteinTarget !== undefined) snakeTargets.protein_target = targets.proteinTarget;
     if (targets.carbsTarget !== undefined) snakeTargets.carbs_target = targets.carbsTarget;
     if (targets.fatTarget !== undefined) snakeTargets.fat_target = targets.fatTarget;
-    apiUpdateTargets(snakeTargets).catch(() => {});
+    apiUpdateTargets(snakeTargets).catch((err) => console.warn('Failed to persist nutrition targets:', err));
   },
 
   loadNutrition: async () => {

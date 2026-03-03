@@ -74,6 +74,8 @@ export default function LoginScreen() {
                 placeholder="Full name"
                 placeholderTextColor={colors.textTertiary}
                 autoCapitalize="words"
+                accessibilityLabel="Full name"
+                accessibilityHint="Enter your full name to create an account"
                 style={{
                   fontFamily: 'DMSans',
                   fontSize: 15,
@@ -95,6 +97,8 @@ export default function LoginScreen() {
               placeholderTextColor={colors.textTertiary}
               autoCapitalize="none"
               keyboardType="email-address"
+              accessibilityLabel="Email address"
+              accessibilityHint="Enter your email address"
               style={{
                 fontFamily: 'DMSans',
                 fontSize: 15,
@@ -114,6 +118,8 @@ export default function LoginScreen() {
               placeholder="Password"
               placeholderTextColor={colors.textTertiary}
               secureTextEntry
+              accessibilityLabel="Password"
+              accessibilityHint="Enter your password"
               style={{
                 fontFamily: 'DMSans',
                 fontSize: 15,
@@ -141,6 +147,9 @@ export default function LoginScreen() {
             <Pressable
               onPress={handleSubmit}
               disabled={loading}
+              accessibilityRole="button"
+              accessibilityLabel={isSignUp ? 'Create Account' : 'Sign In'}
+              accessibilityState={{ disabled: loading }}
               style={{
                 backgroundColor: colors.primary,
                 borderRadius: 12,

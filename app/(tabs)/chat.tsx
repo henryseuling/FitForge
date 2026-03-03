@@ -9,7 +9,7 @@ function MessageBubble({ message }: { message: any }) {
   const isUser = message.role === 'user';
 
   return (
-    <View style={{ alignItems: isUser ? 'flex-end' : 'flex-start', paddingHorizontal: 20, paddingVertical: 4 }}>
+    <View accessible accessibilityRole="text" accessibilityLabel={`${isUser ? 'You' : 'Coach'}: ${message.content}`} style={{ alignItems: isUser ? 'flex-end' : 'flex-start', paddingHorizontal: 20, paddingVertical: 4 }}>
       <View style={{
         maxWidth: isUser ? 280 : 300,
         paddingVertical: 14, paddingHorizontal: 16, gap: 8,
@@ -33,6 +33,8 @@ function QuickAction({ label, onPress }: { label: string; onPress: () => void })
   return (
     <Pressable
       onPress={onPress}
+      accessibilityRole="button"
+      accessibilityLabel={label}
       style={{
         flexDirection: 'row', alignItems: 'center', gap: 6,
         paddingVertical: 8, paddingHorizontal: 14,
@@ -127,6 +129,8 @@ export default function ChatScreen() {
             placeholder="Ask anything..."
             placeholderTextColor={colors.textTertiary}
             returnKeyType="send"
+            accessibilityLabel="Chat message input"
+            accessibilityHint="Type a message to your AI coach"
             style={{
               flex: 1, paddingVertical: 10, paddingHorizontal: 16,
               borderRadius: 24, backgroundColor: colors.surface,
@@ -134,7 +138,7 @@ export default function ChatScreen() {
               fontFamily: 'DMSans', fontSize: 14, color: colors.textPrimary,
             }}
           />
-          <Pressable onPress={() => handleSend()} style={{
+          <Pressable onPress={() => handleSend()} accessibilityRole="button" accessibilityLabel="Send message" accessibilityState={{ disabled: !inputText.trim() }} style={{
             width: 40, height: 40, borderRadius: 20,
             alignItems: 'center', justifyContent: 'center',
             backgroundColor: inputText.trim() ? colors.primary : colors.elevated,

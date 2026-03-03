@@ -189,7 +189,7 @@ export const useWorkoutStore = create<WorkoutState>((set, get) => ({
       perSide: cs.perSide,
       bodyweight: cs.bodyweight,
       note: cs.note,
-    }).catch(() => {});
+    }).catch((err) => console.warn('Failed to persist set:', err));
   },
 
   startRestTimer: () =>
@@ -225,7 +225,7 @@ export const useWorkoutStore = create<WorkoutState>((set, get) => ({
     set({ workoutStartedAt: Date.now() });
     const state = get();
     if (state.workoutName) {
-      createWorkout(state.workoutName, state.dayNumber).catch(() => {});
+      createWorkout(state.workoutName, state.dayNumber).catch((err) => console.warn('Failed to create workout:', err));
     }
   },
 

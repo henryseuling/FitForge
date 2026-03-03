@@ -108,6 +108,7 @@ export default function TabLayout() {
         options={{
           title: 'Train',
           tabBarIcon: ({ color }) => <TabIcon name="train" color={color} />,
+          tabBarAccessibilityLabel: 'Train tab - view workouts and start training',
         }}
       />
       <Tabs.Screen
@@ -115,6 +116,7 @@ export default function TabLayout() {
         options={{
           title: 'Chat',
           tabBarIcon: ({ color }) => <TabIcon name="chat" color={color} />,
+          tabBarAccessibilityLabel: 'Chat tab - talk to your AI coach',
         }}
       />
       <Tabs.Screen
@@ -122,6 +124,7 @@ export default function TabLayout() {
         options={{
           title: 'Eat',
           tabBarIcon: ({ color }) => <TabIcon name="eat" color={color} />,
+          tabBarAccessibilityLabel: 'Eat tab - log meals and track nutrition',
         }}
       />
       <Tabs.Screen
@@ -129,6 +132,7 @@ export default function TabLayout() {
         options={{
           title: 'Progress',
           tabBarIcon: ({ color }) => <TabIcon name="progress" color={color} />,
+          tabBarAccessibilityLabel: 'Progress tab - view stats and personal records',
         }}
       />
       <Tabs.Screen
@@ -136,6 +140,7 @@ export default function TabLayout() {
         options={{
           title: 'Settings',
           tabBarIcon: ({ color }) => <TabIcon name="settings" color={color} />,
+          tabBarAccessibilityLabel: 'Settings tab - manage your profile and preferences',
         }}
       />
     </Tabs>

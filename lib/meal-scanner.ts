@@ -1,10 +1,8 @@
 // Meal photo analysis using Claude Vision API
 // NOTE: In production, send the image to your backend/Supabase Edge Function
 
-import Constants from 'expo-constants';
-
 const CLAUDE_API_URL = 'https://api.anthropic.com/v1/messages';
-const API_KEY = Constants.expoConfig?.extra?.claudeApiKey || process.env.EXPO_PUBLIC_CLAUDE_API_KEY || '';
+const API_KEY = process.env.EXPO_PUBLIC_CLAUDE_API_KEY || '';
 
 export interface ScannedMeal {
   name: string;
