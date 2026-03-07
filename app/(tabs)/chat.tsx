@@ -1,8 +1,10 @@
 import React, { useState, useRef, useEffect } from 'react';
 import { ScrollView, View, Text, TextInput, Pressable, KeyboardAvoidingView, Platform } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
+import { router } from 'expo-router';
 import { colors } from '@/lib/theme';
 import { useChatStore } from '@/stores/useChatStore';
+import { useNutritionStore } from '@/stores/useNutritionStore';
 import { useWorkoutStore } from '@/stores/useWorkoutStore';
 
 function MessageBubble({ message }: { message: any }) {
@@ -47,8 +49,109 @@ function QuickAction({ label, onPress }: { label: string; onPress: () => void })
   );
 }
 
+function CoachStatusCard() {
+  const { workoutName, dayNumber, readinessScore, hrv, sleepScore, recoveryScore } = useWorkoutStore();
+  const { calorieTarget, totalCalories, proteinTarget, totalProtein } = useNutritionStore();
+
+  const remainingCalories = Math.max(calorieTarget - totalCalories(), 0);
+  const remainingProtein = Math.max(proteinTarget - totalProtein(), 0);
+  const recoveryLabel =
+    recoveryScore != null
+      ? `${recoveryScore}/100 recovery`
+      : readinessScore > 0
+        ? `${readinessScore}/100 readiness`
+        : 'No recovery signal yet';
+  const workoutLabel = workoutName
+    ? dayNumber > 0
+      ? `${workoutName} · Day ${dayNumber}`
+      : `${workoutName} · Up next`
+    : 'No workout drafted yet';
+
+  return (
+    <View
+      style={{
+        marginHorizontal: 20,
+        marginTop: 8,
+        marginBottom: 10,
+        padding: 16,
+        borderRadius: 18,
+        backgroundColor: colors.surface,
+        borderWidth: 1,
+        borderColor: 'rgba(232, 168, 56, 0.12)',
+        gap: 12,
+      }}
+    >
+      <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-start', gap: 12 }}>
+        <View style={{ flex: 1, gap: 4 }}>
+          <Text style={{ fontFamily: 'DMSans-Medium', fontSize: 11, color: colors.primary, textTransform: 'uppercase', letterSpacing: 0.7 }}>
+            Coach Context
+          </Text>
+          <Text style={{ fontFamily: 'DMSans-SemiBold', fontSize: 15, color: colors.textPrimary }}>
+            {workoutLabel}
+          </Text>
+          <Text style={{ fontFamily: 'DMSans', fontSize: 12, color: colors.textSecondary }}>
+            {recoveryLabel}
+            {hrv ? ` · HRV ${hrv}` : ''}
+            {sleepScore ? ` · Sleep ${sleepScore}` : ''}
+          </Text>
+        </View>
+        <View style={{ paddingHorizontal: 10, paddingVertical: 6, borderRadius: 10, backgroundColor: colors.primaryMuted }}>
+          <Text style={{ fontFamily: 'JetBrainsMono-Bold', fontSize: 12, color: colors.primary }}>{remainingCalories} kcal</Text>
+        </View>
+      </View>
+      <View style={{ flexDirection: 'row', gap: 8 }}>
+        <View style={{ flex: 1, padding: 10, borderRadius: 12, backgroundColor: colors.elevated }}>
+          <Text style={{ fontFamily: 'DMSans-Medium', fontSize: 10, color: colors.textTertiary, textTransform: 'uppercase', letterSpacing: 0.6 }}>
+            Protein Left
+          </Text>
+          <Text style={{ fontFamily: 'JetBrainsMono-Bold', fontSize: 16, color: colors.textPrimary, marginTop: 4 }}>{remainingProtein}g</Text>
+        </View>
+        <View style={{ flex: 1, padding: 10, borderRadius: 12, backgroundColor: colors.elevated }}>
+          <Text style={{ fontFamily: 'DMSans-Medium', fontSize: 10, color: colors.textTertiary, textTransform: 'uppercase', letterSpacing: 0.6 }}>
+            Best Use
+          </Text>
+          <Text style={{ fontFamily: 'DMSans', fontSize: 12, color: colors.textSecondary, marginTop: 4 }}>
+            Ask for today&apos;s plan, log a set, or scan a meal.
+          </Text>
+        </View>
+      </View>
+    </View>
+  );
+}
+
+function ComposerAction({
+  label,
+  tone = 'default',
+  onPress,
+}: {
+  label: string;
+  tone?: 'default' | 'primary';
+  onPress: () => void;
+}) {
+  const isPrimary = tone === 'primary';
+  return (
+    <Pressable
+      onPress={onPress}
+      accessibilityRole="button"
+      accessibilityLabel={label}
+      style={{
+        paddingVertical: 9,
+        paddingHorizontal: 12,
+        borderRadius: 12,
+        backgroundColor: isPrimary ? colors.primaryMuted : colors.elevated,
+        borderWidth: 1,
+        borderColor: isPrimary ? 'rgba(232, 168, 56, 0.16)' : 'rgba(255,255,255,0.04)',
+      }}
+    >
+      <Text style={{ fontFamily: 'DMSans-SemiBold', fontSize: 12, color: isPrimary ? colors.primary : colors.textSecondary }}>
+        {label}
+      </Text>
+    </Pressable>
+  );
+}
+
 export default function ChatScreen() {
-  const { messages, isLoading, sendUserMessage, lastError, retryLastMessage } = useChatStore();
+  const { messages, isLoading, sendUserMessage, lastError, retryLastMessage, pendingUndo, undoLastAction, clearPendingUndo } = useChatStore();
   const { workoutName, dayNumber } = useWorkoutStore();
   const [inputText, setInputText] = useState('');
   const scrollRef = useRef<ScrollView>(null);
@@ -76,6 +179,13 @@ export default function ChatScreen() {
     { label: 'Help me break a plateau', message: "I feel like I've hit a plateau. Can you suggest changes to help me break through?" },
   ];
 
+  const workoutStatusLabel = workoutName ? (dayNumber > 0 ? 'Workout loaded' : 'Next workout ready') : 'No workout loaded';
+  const workoutContextLabel = workoutName
+    ? dayNumber > 0
+      ? `${workoutName} · Day ${dayNumber}`
+      : `${workoutName} · Up next`
+    : 'No active workout';
+
   return (
     <SafeAreaView style={{ flex: 1, backgroundColor: colors.bg }}>
       <KeyboardAvoidingView style={{ flex: 1 }} behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
@@ -85,7 +195,7 @@ export default function ChatScreen() {
           <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
             <View style={{ width: 6, height: 6, borderRadius: 3, backgroundColor: workoutName ? colors.success : colors.textTertiary }} />
             <Text style={{ fontFamily: 'DMSans', fontSize: 12, color: colors.textTertiary }}>
-              {workoutName ? 'Workout loaded' : 'No workout loaded'}
+              {workoutStatusLabel}
             </Text>
           </View>
         </View>
@@ -94,10 +204,83 @@ export default function ChatScreen() {
         <View style={{ alignItems: 'center', paddingVertical: 6 }}>
           <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6, paddingVertical: 6, paddingHorizontal: 14, borderRadius: 100, backgroundColor: 'rgba(232, 168, 56, 0.08)', borderWidth: 1, borderColor: 'rgba(232, 168, 56, 0.12)' }}>
             <Text style={{ fontFamily: 'DMSans-Medium', fontSize: 12, color: colors.primary, letterSpacing: 0.3 }}>
-              {workoutName ? `${workoutName} · Day ${dayNumber}` : 'No active workout'}
+              {workoutContextLabel}
             </Text>
           </View>
         </View>
+
+        <CoachStatusCard />
+
+        {pendingUndo && (
+          <View
+            style={{
+              marginHorizontal: 20,
+              marginBottom: 10,
+              padding: 14,
+              borderRadius: 16,
+              backgroundColor: colors.surface,
+              borderWidth: 1,
+              borderColor: 'rgba(255,255,255,0.06)',
+              gap: 10,
+            }}
+          >
+            <View style={{ gap: 4 }}>
+              <Text style={{ fontFamily: 'DMSans-Medium', fontSize: 11, color: colors.primary, textTransform: 'uppercase', letterSpacing: 0.7 }}>
+                Last AI Change
+              </Text>
+              <Text style={{ fontFamily: 'DMSans', fontSize: 13, color: colors.textSecondary }}>
+                {pendingUndo.summary}
+              </Text>
+            </View>
+            <View style={{ flexDirection: 'row', gap: 8 }}>
+              <Pressable
+                onPress={undoLastAction}
+                style={{
+                  flex: 1,
+                  paddingVertical: 10,
+                  borderRadius: 12,
+                  backgroundColor: colors.primaryMuted,
+                  borderWidth: 1,
+                  borderColor: 'rgba(232, 168, 56, 0.16)',
+                  alignItems: 'center',
+                }}
+              >
+                <Text style={{ fontFamily: 'DMSans-SemiBold', fontSize: 13, color: colors.primary }}>
+                  {pendingUndo.action.label}
+                </Text>
+              </Pressable>
+              {pendingUndo.reviewRoute && (
+                <Pressable
+                  onPress={() => router.push(pendingUndo.reviewRoute as any)}
+                  style={{
+                    flex: 1,
+                    paddingVertical: 10,
+                    borderRadius: 12,
+                    backgroundColor: colors.elevated,
+                    borderWidth: 1,
+                    borderColor: 'rgba(255,255,255,0.06)',
+                    alignItems: 'center',
+                  }}
+                >
+                  <Text style={{ fontFamily: 'DMSans-SemiBold', fontSize: 13, color: colors.textPrimary }}>
+                    Review
+                  </Text>
+                </Pressable>
+              )}
+              <Pressable
+                onPress={clearPendingUndo}
+                style={{
+                  paddingHorizontal: 12,
+                  justifyContent: 'center',
+                }}
+              >
+                <Text style={{ fontFamily: 'DMSans-Medium', fontSize: 12, color: colors.textTertiary }}>
+                  Dismiss
+                </Text>
+              </Pressable>
+            </View>
+          </View>
+        )}
 
         {/* Messages */}
         <ScrollView ref={scrollRef} style={{ flex: 1 }} showsVerticalScrollIndicator={false} keyboardShouldPersistTaps="handled" contentContainerStyle={{ paddingBottom: 8 }}>
@@ -136,31 +319,39 @@ export default function ChatScreen() {
         </ScrollView>
 
         {/* Input Bar */}
-        <View style={{ flexDirection: 'row', alignItems: 'center', paddingHorizontal: 20, paddingVertical: 12, gap: 10 }}>
-          <TextInput
-            value={inputText}
-            onChangeText={setInputText}
-            onSubmitEditing={() => handleSend()}
-            placeholder="Ask anything..."
-            placeholderTextColor={colors.textTertiary}
-            returnKeyType="send"
-            accessibilityLabel="Chat message input"
-            accessibilityHint="Type a message to your AI coach"
-            editable={!isLoading}
-            style={{
-              flex: 1, paddingVertical: 10, paddingHorizontal: 16,
-              borderRadius: 24, backgroundColor: colors.surface,
-              borderWidth: 1, borderColor: 'rgba(255,255,255,0.06)',
-              fontFamily: 'DMSans', fontSize: 14, color: colors.textPrimary,
-            }}
-          />
-          <Pressable disabled={isLoading} onPress={() => handleSend()} accessibilityRole="button" accessibilityLabel="Send message" accessibilityState={{ disabled: !inputText.trim() || isLoading }} style={{
-            width: 40, height: 40, borderRadius: 20,
-            alignItems: 'center', justifyContent: 'center',
-            backgroundColor: inputText.trim() && !isLoading ? colors.primary : colors.elevated,
-          }}>
-            <Text style={{ fontFamily: 'DMSans-Bold', fontSize: 16, color: inputText.trim() && !isLoading ? colors.bg : colors.textTertiary }}>↑</Text>
-          </Pressable>
+        <View style={{ paddingHorizontal: 20, paddingTop: 8, paddingBottom: 12, gap: 10 }}>
+          <View style={{ flexDirection: 'row', gap: 8, flexWrap: 'wrap' }}>
+            <ComposerAction label="Food Photo" tone="primary" onPress={() => router.push('/camera?source=chat')} />
+            <ComposerAction label="Log Set" onPress={() => handleSend('Help me log my next set for this workout.')} />
+            <ComposerAction label="Next Workout" onPress={() => handleSend("What's my next workout and why?")} />
+            <ComposerAction label="Calories Left" onPress={() => handleSend('How many calories and protein do I have left today?')} />
+          </View>
+          <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10 }}>
+            <TextInput
+              value={inputText}
+              onChangeText={setInputText}
+              onSubmitEditing={() => handleSend()}
+              placeholder="Ask coach anything or tell it what to update..."
+              placeholderTextColor={colors.textTertiary}
+              returnKeyType="send"
+              accessibilityLabel="Chat message input"
+              accessibilityHint="Type a message to your AI coach"
+              editable={!isLoading}
+              style={{
+                flex: 1, paddingVertical: 12, paddingHorizontal: 16,
+                borderRadius: 18, backgroundColor: colors.surface,
+                borderWidth: 1, borderColor: 'rgba(255,255,255,0.06)',
+                fontFamily: 'DMSans', fontSize: 14, color: colors.textPrimary,
+              }}
+            />
+            <Pressable disabled={isLoading} onPress={() => handleSend()} accessibilityRole="button" accessibilityLabel="Send message" accessibilityState={{ disabled: !inputText.trim() || isLoading }} style={{
+              minWidth: 56, height: 44, paddingHorizontal: 14, borderRadius: 14,
+              alignItems: 'center', justifyContent: 'center',
+              backgroundColor: inputText.trim() && !isLoading ? colors.primary : colors.elevated,
+            }}>
+              <Text style={{ fontFamily: 'DMSans-Bold', fontSize: 14, color: inputText.trim() && !isLoading ? colors.bg : colors.textTertiary }}>Send</Text>
+            </Pressable>
+          </View>
         </View>
       </KeyboardAvoidingView>
     </SafeAreaView>

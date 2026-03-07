@@ -1,4 +1,4 @@
-import { createGoal, saveCoachMemory } from './api';
+import { createGoal, deleteGoal, saveCoachMemory } from './api';
 import { useNutritionStore } from '@/stores/useNutritionStore';
 import { useProgressStore } from '@/stores/useProgressStore';
 import { useUserStore } from '@/stores/useUserStore';
@@ -32,6 +32,79 @@ function ensureExerciseExists(exerciseId: string) {
   return exercise;
 }
 
+export interface AIUndoAction {
+  kind:
+    | 'remove_meal'
+    | 'restore_nutrition_targets'
+    | 'restore_water'
+    | 'restore_profile'
+    | 'restore_progressive_overload'
+    | 'delete_goal'
+    | 'restore_session_notes'
+    | 'restore_exercise';
+  payload: Record<string, unknown>;
+  label: string;
+}
+
+function successResult(
+  summary: string,
+  extra: Record<string, unknown> = {},
+  options?: { undo?: AIUndoAction; reviewRoute?: string }
+) {
+  return JSON.stringify({ success: true, summary, ...extra, undo: options?.undo, reviewRoute: options?.reviewRoute });
+}
+
+export async function executeAIUndoAction(action: AIUndoAction): Promise<void> {
+  switch (action.kind) {
+    case 'remove_meal': {
+      const mealId = asString(action.payload.mealId);
+      if (!mealId) throw new Error('Missing meal id');
+      useNutritionStore.getState().removeMeal(mealId);
+      return;
+    }
+    case 'restore_nutrition_targets':
+      useNutritionStore.getState().updateTargets(action.payload as any);
+      return;
+    case 'restore_water': {
+      const glasses = asNumber(action.payload.glasses);
+      if (glasses === null) throw new Error('Missing water amount');
+      useNutritionStore.getState().setWaterGlasses(glasses);
+      return;
+    }
+    case 'restore_profile':
+      useUserStore.getState().updateProfile(action.payload as any);
+      return;
+    case 'restore_progressive_overload': {
+      const value = typeof action.payload.value === 'boolean' ? action.payload.value : null;
+      if (value === null) throw new Error('Missing overload value');
+      useUserStore.getState().updateProfile({ progressiveOverload: value });
+      return;
+    }
+    case 'delete_goal': {
+      const goalId = asString(action.payload.goalId);
+      if (!goalId) throw new Error('Missing goal id');
+      await deleteGoal(goalId);
+      return;
+    }
+    case 'restore_session_notes':
+      useWorkoutStore.getState().setSessionNotes(asString(action.payload.notes));
+      return;
+    case 'restore_exercise': {
+      const exerciseId = asString(action.payload.exerciseId);
+      const snapshot = asRecord(action.payload.snapshot);
+      if (!exerciseId || !snapshot) throw new Error('Missing exercise restore data');
+      useWorkoutStore.setState((state) => ({
+        exercises: state.exercises.map((exercise) =>
+          exercise.id === exerciseId ? { ...exercise, ...(snapshot as any) } : exercise
+        ),
+      }));
+      return;
+    }
+    default:
+      throw new Error('Unsupported undo action');
+  }
+}
+
 export async function executeAIToolCall(tc: ToolCall): Promise<string> {
   const input = tc.input as Record<string, unknown>;
 
@@ -44,7 +117,7 @@ export async function executeAIToolCall(tc: ToolCall): Promise<string> {
       if (!exerciseId || setNumber === null || weight === null || reps === null) {
         throw new Error('Missing required set fields');
       }
-      ensureExerciseExists(exerciseId);
+      const exercise = ensureExerciseExists(exerciseId);
       useWorkoutStore.getState().logSet(exerciseId, {
         setNumber,
         weight,
@@ -55,29 +128,38 @@ export async function executeAIToolCall(tc: ToolCall): Promise<string> {
         bodyweight: asBoolean(input.bodyweight),
         note: asString(input.note),
       });
-      return JSON.stringify({ success: true, exerciseId, setNumber, weight, reps });
+      return successResult(`Logged set ${setNumber} for ${exercise.name}: ${weight} x ${reps}.`, {
+        exerciseId,
+        setNumber,
+        weight,
+        reps,
+      });
     }
 
     case 'set_active_exercise': {
       const index = asNumber(input.index);
       if (index === null) throw new Error('Missing exercise index');
+      const exercise = useWorkoutStore.getState().exercises[index];
       useWorkoutStore.getState().setActiveExercise(index);
-      return JSON.stringify({ success: true, index });
+      return successResult(
+        exercise ? `Focused ${exercise.name} in the workout.` : `Changed the active exercise.`,
+        { index }
+      );
     }
 
     case 'start_rest_timer':
       useWorkoutStore.getState().startRestTimer();
-      return JSON.stringify({ success: true });
+      return successResult('Started the rest timer.');
 
     case 'skip_rest_timer':
       useWorkoutStore.getState().skipRestTimer();
-      return JSON.stringify({ success: true });
+      return successResult('Skipped the rest timer.');
 
     case 'add_rest_time': {
       const seconds = asNumber(input.seconds);
       if (seconds === null) throw new Error('Missing rest time');
       useWorkoutStore.getState().addRestTime(seconds);
-      return JSON.stringify({ success: true, seconds });
+      return successResult(`Added ${seconds} seconds to the rest timer.`, { seconds });
     }
 
     case 'update_readiness': {
@@ -96,12 +178,12 @@ export async function executeAIToolCall(tc: ToolCall): Promise<string> {
         sleepScore: sleepScore!,
         recoveryScore: recoveryScore!,
       });
-      return JSON.stringify({ success: true });
+      return successResult(`Updated readiness to ${score}/100 with the latest recovery metrics.`);
     }
 
     case 'start_workout':
       await useWorkoutStore.getState().startWorkout();
-      return JSON.stringify({ success: true });
+      return successResult('Started the workout timer for this session.');
 
     case 'replace_exercise': {
       const exerciseId = asString(input.exerciseId);
@@ -111,6 +193,15 @@ export async function executeAIToolCall(tc: ToolCall): Promise<string> {
       }
       const state = useWorkoutStore.getState();
       const existing = ensureExerciseExists(exerciseId);
+      const previousExercise = {
+        name: existing.name,
+        muscleGroup: existing.muscleGroup,
+        sets: existing.sets,
+        repsMin: existing.repsMin,
+        repsMax: existing.repsMax,
+        weight: existing.weight,
+        exerciseNotes: existing.exerciseNotes,
+      };
       useWorkoutStore.setState({
         exercises: state.exercises.map((exercise) =>
           exercise.id === exerciseId
@@ -127,13 +218,28 @@ export async function executeAIToolCall(tc: ToolCall): Promise<string> {
             : exercise
         ),
       });
-      return JSON.stringify({ success: true, exerciseId, replacementName });
+      return successResult(`Replaced ${existing.name} with ${replacementName}.`, { exerciseId, replacementName }, {
+        undo: {
+          kind: 'restore_exercise',
+          payload: { exerciseId, snapshot: previousExercise },
+          label: 'Undo swap',
+        },
+        reviewRoute: '/active-workout',
+      });
     }
 
     case 'set_session_notes': {
       const notes = asString(input.notes);
+      const previousNotes = useWorkoutStore.getState().sessionNotes;
       useWorkoutStore.getState().setSessionNotes(notes);
-      return JSON.stringify({ success: true, notes });
+      return successResult('Saved the session notes for this workout.', { notes }, {
+        undo: {
+          kind: 'restore_session_notes',
+          payload: { notes: previousNotes },
+          label: 'Undo notes change',
+        },
+        reviewRoute: '/active-workout',
+      });
     }
 
     case 'add_meal': {
@@ -159,8 +265,9 @@ export async function executeAIToolCall(tc: ToolCall): Promise<string> {
       if (!type || totalCalories === null || protein === null || carbs === null || fat === null) {
         throw new Error('Missing meal fields');
       }
+      const mealId = Date.now().toString();
       useNutritionStore.getState().addMeal({
-        id: Date.now().toString(),
+        id: mealId,
         name: mealName,
         type,
         time,
@@ -170,10 +277,28 @@ export async function executeAIToolCall(tc: ToolCall): Promise<string> {
         carbs,
         fat,
       });
-      return JSON.stringify({ success: true, type, totalCalories, foods: foods.length });
+      return successResult(
+        `Logged ${mealName || type} for ${totalCalories} kcal${foods.length > 0 ? ` across ${foods.length} item${foods.length === 1 ? '' : 's'}` : ''}.`,
+        { type, totalCalories, foods: foods.length },
+        {
+          undo: {
+            kind: 'remove_meal',
+            payload: { mealId },
+            label: 'Undo meal',
+          },
+          reviewRoute: '/eat',
+        }
+      );
     }
 
     case 'update_nutrition_targets': {
+      const nutritionState = useNutritionStore.getState();
+      const previousTargets = {
+        calorieTarget: nutritionState.calorieTarget,
+        proteinTarget: nutritionState.proteinTarget,
+        carbsTarget: nutritionState.carbsTarget,
+        fatTarget: nutritionState.fatTarget,
+      };
       const targets: Record<string, number> = {};
       const calorieTarget = asNumber(input.calorieTarget);
       const proteinTarget = asNumber(input.proteinTarget);
@@ -184,14 +309,32 @@ export async function executeAIToolCall(tc: ToolCall): Promise<string> {
       if (carbsTarget !== null) targets.carbsTarget = carbsTarget;
       if (fatTarget !== null) targets.fatTarget = fatTarget;
       useNutritionStore.getState().updateTargets(targets);
-      return JSON.stringify({ success: true, ...targets });
+      const changedTargets = Object.entries(targets)
+        .map(([key, value]) => `${key.replace('Target', '')} ${value}`)
+        .join(', ');
+      return successResult(`Updated nutrition targets: ${changedTargets}.`, targets, {
+        undo: {
+          kind: 'restore_nutrition_targets',
+          payload: previousTargets,
+          label: 'Undo target change',
+        },
+        reviewRoute: '/settings/edit-nutrition',
+      });
     }
 
     case 'log_water': {
       const glasses = asNumber(input.glasses);
       if (glasses === null) throw new Error('Missing water intake');
+      const previousGlasses = useNutritionStore.getState().waterGlasses;
       useNutritionStore.getState().setWaterGlasses(glasses);
-      return JSON.stringify({ success: true, glasses });
+      return successResult(`Logged water intake at ${glasses} glass${glasses === 1 ? '' : 'es'}.`, { glasses }, {
+        undo: {
+          kind: 'restore_water',
+          payload: { glasses: previousGlasses },
+          label: 'Undo water log',
+        },
+        reviewRoute: '/eat',
+      });
     }
 
     case 'update_key_lift': {
@@ -199,24 +342,47 @@ export async function executeAIToolCall(tc: ToolCall): Promise<string> {
       const weight = asNumber(input.weight);
       if (!name || weight === null) throw new Error('Missing key lift fields');
       useProgressStore.getState().updateKeyLift({ name, weight });
-      return JSON.stringify({ success: true, name, weight });
+      return successResult(`Updated ${name} to ${weight} lb.`, { name, weight });
     }
 
     case 'log_body_weight': {
       const weight = asNumber(input.weight);
       if (weight === null) throw new Error('Missing body weight');
       useProgressStore.getState().logBodyWeight(weight);
-      return JSON.stringify({ success: true, weight });
+      return successResult(`Logged body weight at ${weight} lb.`, { weight });
     }
 
     case 'update_profile': {
+      const currentProfile = useUserStore.getState();
+      const previousValues = Object.keys(input).reduce<Record<string, unknown>>((acc, key) => {
+        acc[key] = (currentProfile as any)[key];
+        return acc;
+      }, {});
       useUserStore.getState().updateProfile(input as any);
-      return JSON.stringify({ success: true });
+      const changedFields = Object.keys(input).join(', ');
+      return successResult(`Updated your profile${changedFields ? `: ${changedFields}` : ''}.`, {}, {
+        undo: {
+          kind: 'restore_profile',
+          payload: previousValues,
+          label: 'Undo profile change',
+        },
+        reviewRoute: '/settings',
+      });
     }
 
-    case 'toggle_progressive_overload':
+    case 'toggle_progressive_overload': {
+      const before = useUserStore.getState().progressiveOverload;
       useUserStore.getState().toggleProgressiveOverload();
-      return JSON.stringify({ success: true });
+      const after = !before;
+      return successResult(`Turned progressive overload ${after ? 'on' : 'off'}.`, {}, {
+        undo: {
+          kind: 'restore_progressive_overload',
+          payload: { value: before },
+          label: 'Undo overload toggle',
+        },
+        reviewRoute: '/settings',
+      });
+    }
 
     case 'create_goal': {
       const title = asString(input.title);
@@ -236,7 +402,14 @@ export async function executeAIToolCall(tc: ToolCall): Promise<string> {
         unit,
         deadline: deadline || undefined,
       });
-      return JSON.stringify({ success: true, id: goal.id, title });
+      return successResult(`Created goal: ${title}.`, { id: goal.id, title }, {
+        undo: {
+          kind: 'delete_goal',
+          payload: { goalId: goal.id },
+          label: 'Undo goal',
+        },
+        reviewRoute: '/goals',
+      });
     }
 
     case 'remember_preference': {
@@ -250,7 +423,7 @@ export async function executeAIToolCall(tc: ToolCall): Promise<string> {
         pinned: asBoolean(input.pinned),
         metadata: asRecord(input.metadata),
       });
-      return JSON.stringify({ success: true, id: memory.id, category, content });
+      return successResult(`Saved a coach memory for ${category}.`, { id: memory.id, category, content });
     }
 
     default:

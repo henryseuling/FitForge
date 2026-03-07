@@ -7,6 +7,7 @@ import { router } from 'expo-router';
 import { colors } from '@/lib/theme';
 import { useWorkoutStore } from '@/stores/useWorkoutStore';
 import { useUserStore } from '@/stores/useUserStore';
+import { useNutritionStore } from '@/stores/useNutritionStore';
 import { fetchNextSessionPlan, fetchAIObservations } from '@/lib/api';
 import SetLogger from '@/components/SetLogger';
 
@@ -244,6 +245,120 @@ function EmptyWorkoutState({ onStart }: { onStart: () => void }) {
   );
 }
 
+function TodayHero({
+  hasWorkout,
+  workoutName,
+  workoutDayLabel,
+  completedSets,
+  totalSets,
+  onPrimaryPress,
+}: {
+  hasWorkout: boolean;
+  workoutName: string;
+  workoutDayLabel: string;
+  completedSets: number;
+  totalSets: number;
+  onPrimaryPress: () => void;
+}) {
+  const { readinessScore, recoveryScore } = useWorkoutStore();
+  const { calorieTarget, totalCalories, proteinTarget, totalProtein } = useNutritionStore();
+  const remainingCalories = Math.max(calorieTarget - totalCalories(), 0);
+  const remainingProtein = Math.max(proteinTarget - totalProtein(), 0);
+  const completedPct = totalSets > 0 ? Math.round((completedSets / totalSets) * 100) : 0;
+
+  return (
+    <View
+      style={{
+        marginHorizontal: 20,
+        marginTop: 12,
+        padding: 20,
+        borderRadius: 20,
+        backgroundColor: colors.surface,
+        borderWidth: 1,
+        borderColor: 'rgba(232, 168, 56, 0.14)',
+        gap: 16,
+      }}
+    >
+      <View style={{ gap: 6 }}>
+        <Text style={{ fontFamily: 'DMSans-Medium', fontSize: 11, color: colors.primary, textTransform: 'uppercase', letterSpacing: 0.8 }}>
+          Today
+        </Text>
+        <Text style={{ fontFamily: 'DMSans-Bold', fontSize: 24, color: colors.textPrimary, lineHeight: 30 }}>
+          {hasWorkout ? workoutName : 'Your coach is ready with your next move.'}
+        </Text>
+        <Text style={{ fontFamily: 'DMSans', fontSize: 14, lineHeight: 20, color: colors.textSecondary }}>
+          {hasWorkout
+            ? `${workoutDayLabel} · ${completedSets}/${totalSets} sets complete. Train with intent and let the coach guide the next decision.`
+            : 'Open your next session, ask for a recovery-aware recommendation, or start tracking straight from chat.'}
+        </Text>
+      </View>
+
+      <View style={{ flexDirection: 'row', gap: 10 }}>
+        <View style={{ flex: 1, padding: 12, borderRadius: 14, backgroundColor: colors.elevated }}>
+          <Text style={{ fontFamily: 'DMSans-Medium', fontSize: 10, color: colors.textTertiary, textTransform: 'uppercase', letterSpacing: 0.6 }}>
+            Readiness
+          </Text>
+          <Text style={{ fontFamily: 'JetBrainsMono-Bold', fontSize: 22, color: colors.textPrimary, marginTop: 4 }}>
+            {recoveryScore || readinessScore}
+          </Text>
+          <Text style={{ fontFamily: 'DMSans', fontSize: 11, color: colors.textSecondary }}>
+            {recoveryScore ? 'recovery score' : 'training readiness'}
+          </Text>
+        </View>
+        <View style={{ flex: 1, padding: 12, borderRadius: 14, backgroundColor: colors.elevated }}>
+          <Text style={{ fontFamily: 'DMSans-Medium', fontSize: 10, color: colors.textTertiary, textTransform: 'uppercase', letterSpacing: 0.6 }}>
+            Fuel
+          </Text>
+          <Text style={{ fontFamily: 'JetBrainsMono-Bold', fontSize: 22, color: colors.textPrimary, marginTop: 4 }}>
+            {remainingCalories}
+          </Text>
+          <Text style={{ fontFamily: 'DMSans', fontSize: 11, color: colors.textSecondary }}>
+            kcal left · {remainingProtein}g protein
+          </Text>
+        </View>
+        <View style={{ flex: 1, padding: 12, borderRadius: 14, backgroundColor: colors.elevated }}>
+          <Text style={{ fontFamily: 'DMSans-Medium', fontSize: 10, color: colors.textTertiary, textTransform: 'uppercase', letterSpacing: 0.6 }}>
+            Status
+          </Text>
+          <Text style={{ fontFamily: 'JetBrainsMono-Bold', fontSize: 22, color: colors.textPrimary, marginTop: 4 }}>
+            {hasWorkout ? `${completedPct}%` : 'AI'}
+          </Text>
+          <Text style={{ fontFamily: 'DMSans', fontSize: 11, color: colors.textSecondary }}>
+            {hasWorkout ? 'workout complete' : 'coach-ready plan'}
+          </Text>
+        </View>
+      </View>
+
+      <View style={{ flexDirection: 'row', gap: 10 }}>
+        <Pressable
+          onPress={onPrimaryPress}
+          style={{ flex: 1, paddingVertical: 14, borderRadius: 14, backgroundColor: colors.primary, alignItems: 'center' }}
+        >
+          <Text style={{ fontFamily: 'DMSans-Bold', fontSize: 15, color: colors.bg }}>
+            {hasWorkout ? 'Continue Today' : 'Start Today'}
+          </Text>
+        </Pressable>
+        <Pressable
+          onPress={() => router.push('/chat')}
+          style={{
+            flex: 1,
+            paddingVertical: 14,
+            borderRadius: 14,
+            backgroundColor: colors.elevated,
+            borderWidth: 1,
+            borderColor: 'rgba(255,255,255,0.06)',
+            alignItems: 'center',
+          }}
+        >
+          <Text style={{ fontFamily: 'DMSans-SemiBold', fontSize: 15, color: colors.textPrimary }}>
+            Ask Coach
+          </Text>
+        </Pressable>
+      </View>
+    </View>
+  );
+}
+
 const WORKOUT_TEMPLATES: Record<string, string[]> = {
   '3-Day Full Body': ['Full Body A', 'Full Body B', 'Full Body C'],
   '4-Day Upper/Lower': ['Upper A', 'Lower A', 'Upper B', 'Lower B'],
@@ -424,6 +539,7 @@ export default function TrainScreen() {
   const totalSets = exercises.reduce((sum, e) => sum + e.sets, 0);
   const completedSets = exercises.reduce((sum, e) => sum + e.completedSets.length, 0);
   const allDone = hasWorkout && completedSets >= totalSets;
+  const workoutDayLabel = dayNumber > 0 ? `Day ${dayNumber}` : 'Up next';
 
   return (
     <SafeAreaView style={{ flex: 1, backgroundColor: colors.bg }}>
@@ -441,6 +557,27 @@ export default function TrainScreen() {
           </Pressable>
         </View>
 
+        <TodayHero
+          hasWorkout={hasWorkout}
+          workoutName={workoutName || 'No session loaded'}
+          workoutDayLabel={workoutDayLabel}
+          completedSets={completedSets}
+          totalSets={totalSets}
+          onPrimaryPress={() => {
+            if (hasWorkout) {
+              Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
+              router.push('/active-workout');
+              return;
+            }
+
+            if (templates.length > 0) {
+              setShowPicker(true);
+            } else {
+              handlePickWorkout('Workout', 1);
+            }
+          }}
+        />
+
         <ReadinessCard />
         <CoachPreview />
 
@@ -449,7 +586,7 @@ export default function TrainScreen() {
             <View style={{ paddingHorizontal: 20, paddingTop: 16, paddingBottom: 8, gap: 4 }}>
               <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'baseline' }}>
                 <Text style={{ fontFamily: 'DMSans-Bold', fontSize: 20, color: colors.textPrimary }}>{workoutName}</Text>
-                <Text style={{ fontFamily: 'DMSans-Medium', fontSize: 11, color: colors.primary, textTransform: 'uppercase', letterSpacing: 0.7 }}>Day {dayNumber}</Text>
+                <Text style={{ fontFamily: 'DMSans-Medium', fontSize: 11, color: colors.primary, textTransform: 'uppercase', letterSpacing: 0.7 }}>{workoutDayLabel}</Text>
               </View>
               <Text style={{ fontFamily: 'DMSans', fontSize: 13, color: colors.textTertiary }}>
                 {exercises.length} exercises · {completedSets}/{totalSets} sets done

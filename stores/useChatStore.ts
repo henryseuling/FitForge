@@ -1,6 +1,6 @@
 import { create } from 'zustand';
 import { sendMessage, sendToolResults, type AppStateSnapshot, type Message } from '@/lib/claude';
-import { executeAIToolCall } from '@/lib/aiActions';
+import { executeAIToolCall, executeAIUndoAction, type AIUndoAction } from '@/lib/aiActions';
 import { saveChatMessage, fetchChatHistory } from '@/lib/api';
 import { buildCoachContext } from '@/lib/coachMemory';
 import { useNutritionStore } from './useNutritionStore';
@@ -19,14 +19,24 @@ interface ChatError {
   retryable: boolean;
 }
 
+interface PendingUndo {
+  summary: string;
+  action: AIUndoAction;
+  reviewRoute?: string;
+}
+
 interface ChatState {
   messages: ChatMessage[];
   isLoading: boolean;
   hasLoadedHistory: boolean;
   lastError: ChatError | null;
+  pendingUndo: PendingUndo | null;
   loadHistory: () => Promise<void>;
   sendUserMessage: (text: string) => Promise<void>;
   retryLastMessage: () => Promise<void>;
+  undoLastAction: () => Promise<void>;
+  clearPendingUndo: () => void;
+  addAssistantMessage: (text: string) => void;
   reset: () => void;
 }
 
@@ -71,6 +81,15 @@ function buildSnapshot(): AppStateSnapshot {
       weight: progress.weight,
       streak: progress.streak,
     },
+    health:
+      workout.hrv || workout.restingHR || workout.sleepScore || workout.recoveryScore
+        ? {
+            hrv: workout.hrv || null,
+            restingHR: workout.restingHR || null,
+            sleepScore: workout.sleepScore || null,
+            recoveryScore: workout.recoveryScore || null,
+          }
+        : undefined,
   };
 }
 
@@ -93,11 +112,46 @@ function createTimestamp(): string {
   });
 }
 
+function buildToolSummary(toolResults: Array<{ id: string; result: string }>): string {
+  const summaries = toolResults
+    .map((toolResult) => {
+      try {
+        const parsed = JSON.parse(toolResult.result);
+        return typeof parsed?.summary === 'string' ? parsed.summary.trim() : '';
+      } catch {
+        return '';
+      }
+    })
+    .filter(Boolean);
+
+  if (summaries.length === 0) return '';
+  return `Updated:\n• ${summaries.join('\n• ')}`;
+}
+
+function extractPendingUndo(toolResults: Array<{ id: string; result: string }>): PendingUndo | null {
+  for (let i = toolResults.length - 1; i >= 0; i--) {
+    try {
+      const parsed = JSON.parse(toolResults[i].result);
+      if (parsed?.undo && typeof parsed?.summary === 'string') {
+        return {
+          summary: parsed.summary,
+          action: parsed.undo as AIUndoAction,
+          reviewRoute: typeof parsed.reviewRoute === 'string' ? parsed.reviewRoute : undefined,
+        };
+      }
+    } catch {
+      // Ignore malformed tool outputs.
+    }
+  }
+  return null;
+}
+
 export const useChatStore = create<ChatState>((set, get) => ({
   messages: [WELCOME_MESSAGE],
   isLoading: false,
   hasLoadedHistory: false,
   lastError: null,
+  pendingUndo: null,
 
   loadHistory: async () => {
     if (get().hasLoadedHistory) return;
@@ -141,6 +195,11 @@ export const useChatStore = create<ChatState>((set, get) => ({
     saveChatMessage('user', text).catch((err) => console.warn('Failed to persist user message:', err));
 
     try {
+      const workoutState = useWorkoutStore.getState();
+      if (!workoutState.workoutName && workoutState.exercises.length === 0) {
+        await workoutState.hydrateUpcomingWorkout().catch(() => false);
+      }
+
       const history: Message[] = get().messages.map((m) => ({
         role: m.role,
         content: m.content,
@@ -186,7 +245,18 @@ export const useChatStore = create<ChatState>((set, get) => ({
           toolResults
         );
 
-        replyText = followUp.text || replyText || 'Done! I updated your data.';
+        const toolSummary = buildToolSummary(toolResults);
+        const followUpText = followUp.text || replyText || '';
+
+        if (toolSummary && followUpText) {
+          replyText = `${toolSummary}\n\n${followUpText}`.trim();
+        } else {
+          replyText = toolSummary || followUpText || 'Done! I updated your data.';
+        }
+
+        set({ pendingUndo: extractPendingUndo(toolResults) });
+      } else {
+        set({ pendingUndo: null });
       }
 
       const finalText = replyText || '';
@@ -245,11 +315,72 @@ export const useChatStore = create<ChatState>((set, get) => ({
     }
   },
 
+  undoLastAction: async () => {
+    const pendingUndo = get().pendingUndo;
+    if (!pendingUndo) return;
+
+    set({ isLoading: true, pendingUndo: null, lastError: null });
+
+    try {
+      await executeAIUndoAction(pendingUndo.action);
+
+      const assistantMessage: ChatMessage = {
+        id: createMessageId(1),
+        role: 'assistant',
+        content: `Undid the last change.\n\nReverted: ${pendingUndo.summary}`,
+        timestamp: createTimestamp(),
+      };
+
+      set((state) => ({
+        messages: [...state.messages, assistantMessage],
+      }));
+
+      saveChatMessage('assistant', assistantMessage.content).catch((err) =>
+        console.warn('Failed to persist assistant message:', err)
+      );
+    } catch (err: any) {
+      const errorMessage = err?.message || 'Could not undo that action.';
+      const assistantMessage: ChatMessage = {
+        id: createMessageId(1),
+        role: 'assistant',
+        content: `⚠️ ${errorMessage}`,
+        timestamp: createTimestamp(),
+      };
+
+      set((state) => ({
+        messages: [...state.messages, assistantMessage],
+        lastError: { type: 'undo_failed', message: errorMessage, retryable: false },
+      }));
+    } finally {
+      set({ isLoading: false });
+    }
+  },
+
+  clearPendingUndo: () => set({ pendingUndo: null }),
+
+  addAssistantMessage: (text: string) => {
+    const assistantMessage: ChatMessage = {
+      id: createMessageId(1),
+      role: 'assistant',
+      content: text,
+      timestamp: createTimestamp(),
+    };
+
+    set((state) => ({
+      messages: [...state.messages, assistantMessage],
+    }));
+
+    saveChatMessage('assistant', text).catch((err) =>
+      console.warn('Failed to persist assistant message:', err)
+    );
+  },
+
   reset: () =>
     set({
       messages: [WELCOME_MESSAGE],
       isLoading: false,
       hasLoadedHistory: false,
       lastError: null,
+      pendingUndo: null,
     }),
 }));
