@@ -6,7 +6,9 @@ const corsHeaders = {
 };
 
 const ANTHROPIC_API_URL = 'https://api.anthropic.com/v1/messages';
-const ANTHROPIC_MODEL = Deno.env.get('ANTHROPIC_MODEL') || 'claude-sonnet-4-20250514';
+const ANTHROPIC_DEFAULT_MODEL = Deno.env.get('ANTHROPIC_MODEL') || 'claude-sonnet-4-20250514';
+const ANTHROPIC_WORKOUT_MODEL = Deno.env.get('ANTHROPIC_WORKOUT_MODEL') || 'claude-opus-4-20250514';
+const ANTHROPIC_VISION_MODEL = Deno.env.get('ANTHROPIC_VISION_MODEL') || ANTHROPIC_DEFAULT_MODEL;
 const ANTHROPIC_API_KEY = Deno.env.get('ANTHROPIC_API_KEY') || '';
 const SUPABASE_URL = Deno.env.get('SUPABASE_URL') || '';
 const SUPABASE_SERVICE_ROLE_KEY = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') || '';
@@ -44,10 +46,7 @@ async function callAnthropic(payload: Record<string, unknown>) {
       'x-api-key': ANTHROPIC_API_KEY,
       'anthropic-version': '2023-06-01',
     },
-    body: JSON.stringify({
-      model: ANTHROPIC_MODEL,
-      ...payload,
-    }),
+    body: JSON.stringify(payload),
   });
 
   if (!response.ok) {
@@ -56,6 +55,18 @@ async function callAnthropic(payload: Record<string, unknown>) {
   }
 
   return response.json();
+}
+
+function resolveModel(modelPreference: unknown, task: unknown) {
+  if (modelPreference === 'workout') {
+    return ANTHROPIC_WORKOUT_MODEL;
+  }
+
+  if (modelPreference === 'vision' || task === 'vision') {
+    return ANTHROPIC_VISION_MODEL;
+  }
+
+  return ANTHROPIC_DEFAULT_MODEL;
 }
 
 async function requireAuthenticatedUser(request: Request) {
@@ -188,15 +199,18 @@ Deno.serve(async (request) => {
 
     const body = await request.json();
     const task = body?.task;
+    const model = resolveModel(body?.modelPreference, task);
     const metadata = {
       hasTools: Array.isArray(body?.tools) && body.tools.length > 0,
       messageCount: Array.isArray(body?.messages) ? body.messages.length : 0,
       maxTokens: clampMaxTokens(body?.maxTokens, 1024),
+      model,
     };
 
     switch (task) {
       case 'chat': {
         const data = await callAnthropic({
+          model,
           max_tokens: metadata.maxTokens,
           system: body.systemPrompt,
           tools: body.tools ?? [],
@@ -230,6 +244,7 @@ Deno.serve(async (request) => {
         });
 
         const data = await callAnthropic({
+          model,
           max_tokens: metadata.maxTokens,
           system: body.systemPrompt,
           tools: body.tools ?? [],
@@ -256,6 +271,7 @@ Deno.serve(async (request) => {
 
       case 'completion': {
         const data = await callAnthropic({
+          model,
           max_tokens: metadata.maxTokens,
           system: body.systemPrompt,
           messages: [{ role: 'user', content: body.userMessage }],
@@ -281,6 +297,7 @@ Deno.serve(async (request) => {
 
       case 'vision': {
         const data = await callAnthropic({
+          model,
           max_tokens: metadata.maxTokens,
           messages: [
             {

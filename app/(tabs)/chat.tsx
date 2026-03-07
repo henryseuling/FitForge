@@ -1,5 +1,5 @@
 import React, { useState, useRef, useEffect } from 'react';
-import { ScrollView, View, Text, TextInput, Pressable, KeyboardAvoidingView, Platform } from 'react-native';
+import { ScrollView, View, Text, TextInput, Pressable, KeyboardAvoidingView, Platform, Keyboard } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { router } from 'expo-router';
 import { colors } from '@/lib/theme';
@@ -13,18 +13,22 @@ function MessageBubble({ message }: { message: any }) {
   return (
     <View accessible accessibilityRole="text" accessibilityLabel={`${isUser ? 'You' : 'Coach'}: ${message.content}`} style={{ alignItems: isUser ? 'flex-end' : 'flex-start', paddingHorizontal: 20, paddingVertical: 4 }}>
       <View style={{
-        maxWidth: isUser ? 280 : 300,
-        paddingVertical: 14, paddingHorizontal: 16, gap: 8,
-        borderTopLeftRadius: 18, borderTopRightRadius: 18,
-        borderBottomLeftRadius: isUser ? 18 : 4,
-        borderBottomRightRadius: isUser ? 4 : 18,
-        backgroundColor: isUser ? 'rgba(232, 168, 56, 0.1)' : colors.surface,
-        borderWidth: 1,
-        borderColor: isUser ? 'rgba(232, 168, 56, 0.12)' : 'rgba(255,255,255,0.04)',
-        borderLeftWidth: isUser ? 1 : 2,
-        borderLeftColor: isUser ? 'rgba(232, 168, 56, 0.12)' : 'rgba(232, 168, 56, 0.25)',
+        width: isUser ? undefined : '100%',
+        maxWidth: isUser ? 320 : '100%',
+        paddingVertical: isUser ? 14 : 6,
+        paddingHorizontal: isUser ? 16 : 0,
+        gap: 8,
+        borderTopLeftRadius: isUser ? 18 : 0,
+        borderTopRightRadius: isUser ? 18 : 0,
+        borderBottomLeftRadius: isUser ? 18 : 0,
+        borderBottomRightRadius: isUser ? 4 : 0,
+        backgroundColor: isUser ? 'rgba(232, 168, 56, 0.1)' : 'transparent',
+        borderWidth: isUser ? 1 : 0,
+        borderColor: isUser ? 'rgba(232, 168, 56, 0.12)' : 'transparent',
+        borderLeftWidth: isUser ? 1 : 0,
+        borderLeftColor: isUser ? 'rgba(232, 168, 56, 0.12)' : 'transparent',
       }}>
-        <Text style={{ fontFamily: 'DMSans', fontSize: 14, lineHeight: 21, color: colors.textPrimary }}>{message.content}</Text>
+        <Text style={{ fontFamily: 'DMSans', fontSize: isUser ? 14 : 16, lineHeight: isUser ? 21 : 28, color: colors.textPrimary }}>{message.content}</Text>
         <Text style={{ fontFamily: 'DMSans', fontSize: 11, color: isUser ? colors.textSecondary : colors.textTertiary }}>{message.timestamp}</Text>
       </View>
     </View>
@@ -256,7 +260,15 @@ export default function ChatScreen() {
         )}
 
         {/* Messages */}
-        <ScrollView ref={scrollRef} style={{ flex: 1 }} showsVerticalScrollIndicator={false} keyboardShouldPersistTaps="handled" contentContainerStyle={{ paddingBottom: 8 }}>
+        <ScrollView
+          ref={scrollRef}
+          style={{ flex: 1 }}
+          showsVerticalScrollIndicator={false}
+          keyboardShouldPersistTaps="handled"
+          keyboardDismissMode="on-drag"
+          onScrollBeginDrag={() => Keyboard.dismiss()}
+          contentContainerStyle={{ paddingBottom: 8 }}
+        >
           {messages.map((msg) => (
             <MessageBubble key={msg.id} message={msg} />
           ))}

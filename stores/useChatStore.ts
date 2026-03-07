@@ -200,7 +200,7 @@ export const useChatStore = create<ChatState>((set, get) => ({
         await workoutState.hydrateUpcomingWorkout().catch(() => false);
       }
 
-      const history: Message[] = get().messages.map((m) => ({
+      const history: Message[] = get().messages.slice(-12).map((m) => ({
         role: m.role,
         content: m.content,
       }));

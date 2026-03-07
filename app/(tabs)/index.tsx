@@ -8,7 +8,8 @@ import { colors } from '@/lib/theme';
 import { useWorkoutStore } from '@/stores/useWorkoutStore';
 import { useUserStore } from '@/stores/useUserStore';
 import { useNutritionStore } from '@/stores/useNutritionStore';
-import { fetchNextSessionPlan, fetchAIObservations } from '@/lib/api';
+import { fetchAIObservations, fetchWorkoutHistory } from '@/lib/api';
+import { fetchUpcomingWorkoutDraft, type UpcomingWorkoutDraft } from '@/lib/upcomingWorkout';
 import SetLogger from '@/components/SetLogger';
 
 function ReadinessCard() {
@@ -60,7 +61,7 @@ function ReadinessCard() {
 }
 
 function CoachPreview() {
-  const [plan, setPlan] = useState<any>(null);
+  const [plan, setPlan] = useState<UpcomingWorkoutDraft | null>(null);
   const [observations, setObservations] = useState<any[]>([]);
   const [loaded, setLoaded] = useState(false);
 
@@ -69,7 +70,7 @@ function CoachPreview() {
     (async () => {
       try {
         const [p, obs] = await Promise.all([
-          fetchNextSessionPlan().catch(() => null),
+          fetchUpcomingWorkoutDraft().catch(() => null),
           fetchAIObservations(3).catch(() => []),
         ]);
         if (!cancelled) {
@@ -99,26 +100,26 @@ function CoachPreview() {
 
       {plan && (
         <View style={{ gap: 8 }}>
-          {plan.split_type && (
+          {plan.splitType && (
             <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
               <View style={{ backgroundColor: colors.primaryMuted, paddingHorizontal: 8, paddingVertical: 3, borderRadius: 6 }}>
-                <Text style={{ fontFamily: 'JetBrainsMono-Bold', fontSize: 11, color: colors.primary }}>{plan.split_type}</Text>
+                <Text style={{ fontFamily: 'JetBrainsMono-Bold', fontSize: 11, color: colors.primary }}>{plan.splitType}</Text>
               </View>
               <Text style={{ fontFamily: 'DMSans', fontSize: 12, color: colors.textTertiary }}>Next session</Text>
             </View>
           )}
-          {plan.key_lifts && Array.isArray(plan.key_lifts) && plan.key_lifts.length > 0 && (
+          {Array.isArray(plan.exercises) && plan.exercises.length > 0 && (
             <View style={{ gap: 4 }}>
               <Text style={{ fontFamily: 'DMSans-Medium', fontSize: 11, color: colors.textTertiary, textTransform: 'uppercase', letterSpacing: 0.6 }}>Key Lifts</Text>
-              {plan.key_lifts.slice(0, 3).map((lift: any, i: number) => (
+              {plan.exercises.slice(0, 3).map((lift: any, i: number) => (
                 <Text key={i} style={{ fontFamily: 'DMSans', fontSize: 13, color: colors.textSecondary }}>
-                  {typeof lift === 'string' ? lift : lift.name || lift.exercise || JSON.stringify(lift)}
+                  {lift.name}
                 </Text>
               ))}
             </View>
           )}
-          {plan.coach_notes && (
-            <Text style={{ fontFamily: 'DMSans', fontSize: 13, color: colors.textSecondary, fontStyle: 'italic', lineHeight: 18 }}>{plan.coach_notes}</Text>
+          {plan.sessionNotes && (
+            <Text style={{ fontFamily: 'DMSans', fontSize: 13, color: colors.textSecondary, fontStyle: 'italic', lineHeight: 18 }}>{plan.sessionNotes}</Text>
           )}
         </View>
       )}
@@ -136,6 +137,139 @@ function CoachPreview() {
       )}
     </View>
   );
+}
+
+function SectionHeader({ title, actionLabel, onPress }: { title: string; actionLabel?: string; onPress?: () => void }) {
+  return (
+    <View style={{ paddingHorizontal: 20, paddingTop: 18, paddingBottom: 10, flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' }}>
+      <Text style={{ fontFamily: 'DMSans-Bold', fontSize: 18, color: colors.textPrimary }}>{title}</Text>
+      {actionLabel && onPress ? (
+        <Pressable onPress={onPress}>
+          <Text style={{ fontFamily: 'DMSans-SemiBold', fontSize: 13, color: colors.primary }}>{actionLabel}</Text>
+        </Pressable>
+      ) : null}
+    </View>
+  );
+}
+
+function PreviousWorkoutsSection({ workouts }: { workouts: any[] }) {
+  if (workouts.length === 0) return null;
+
+  return (
+    <>
+      <SectionHeader title="Previous Workouts" actionLabel="Full History" onPress={() => router.push('/workout-history')} />
+      <View style={{ paddingHorizontal: 20, gap: 8 }}>
+        {workouts.map((workout) => {
+          const completedAt = workout.completed_at || workout.started_at;
+          const dateLabel = completedAt
+            ? new Date(completedAt).toLocaleDateString('en-US', { month: 'short', day: 'numeric' })
+            : 'Recent';
+          const exerciseCount = Array.isArray(workout.exercises) ? workout.exercises.length : 0;
+          const setCount = Array.isArray(workout.exercises)
+            ? workout.exercises.reduce((sum: number, exercise: any) => sum + (Array.isArray(exercise.completed_sets) ? exercise.completed_sets.length : 0), 0)
+            : 0;
+
+          return (
+            <View
+              key={workout.id}
+              style={{
+                padding: 14,
+                borderRadius: 14,
+                backgroundColor: colors.surface,
+                borderWidth: 1,
+                borderColor: 'rgba(255,255,255,0.05)',
+                gap: 4,
+              }}
+            >
+              <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' }}>
+                <Text style={{ fontFamily: 'DMSans-SemiBold', fontSize: 14, color: colors.textPrimary }}>
+                  {workout.name || 'Workout'}
+                </Text>
+                <Text style={{ fontFamily: 'JetBrainsMono-Medium', fontSize: 11, color: colors.textTertiary }}>
+                  {dateLabel}
+                </Text>
+              </View>
+              <Text style={{ fontFamily: 'DMSans', fontSize: 12, color: colors.textSecondary }}>
+                {exerciseCount} exercises · {setCount} sets
+              </Text>
+            </View>
+          );
+        })}
+      </View>
+    </>
+  );
+}
+
+function WeekAheadSection({ items }: { items: Array<{ key: string; label: string; title: string; subtitle: string; isToday?: boolean; isPrimary?: boolean }> }) {
+  if (items.length === 0) return null;
+
+  return (
+    <>
+      <SectionHeader title="Week Ahead" />
+      <View style={{ paddingHorizontal: 20, gap: 8 }}>
+        {items.map((item) => (
+          <View
+            key={item.key}
+            style={{
+              padding: 14,
+              borderRadius: 14,
+              backgroundColor: item.isPrimary ? colors.surface : colors.elevated,
+              borderWidth: 1,
+              borderColor: item.isToday || item.isPrimary ? 'rgba(232, 168, 56, 0.2)' : 'rgba(255,255,255,0.04)',
+            }}
+          >
+            <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', gap: 12 }}>
+              <View style={{ flex: 1, gap: 3 }}>
+                <Text style={{ fontFamily: 'DMSans-Medium', fontSize: 11, color: item.isToday ? colors.primary : colors.textTertiary, textTransform: 'uppercase', letterSpacing: 0.7 }}>
+                  {item.label}
+                </Text>
+                <Text style={{ fontFamily: 'DMSans-SemiBold', fontSize: 14, color: colors.textPrimary }}>
+                  {item.title}
+                </Text>
+                <Text style={{ fontFamily: 'DMSans', fontSize: 12, color: colors.textSecondary, lineHeight: 17 }}>
+                  {item.subtitle}
+                </Text>
+              </View>
+            </View>
+          </View>
+        ))}
+      </View>
+    </>
+  );
+}
+
+function buildWeekAheadItems(trainingSplit: string, draft: UpcomingWorkoutDraft | null) {
+  const templates = WORKOUT_TEMPLATES[trainingSplit] || [];
+  const dayLabels = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
+  const today = new Date();
+  const startIndex = today.getDay();
+  const primaryIndex =
+    draft && draft.dayNumber > 0 && draft.dayNumber <= templates.length
+      ? Math.max(draft.dayNumber - 1, 0)
+      : 0;
+
+  return Array.from({ length: 7 }, (_, offset) => {
+    const calendarIndex = (startIndex + offset) % 7;
+    const templateIndex = primaryIndex + offset;
+    const isWorkoutDay = templateIndex < templates.length;
+    const fallbackTitle = isWorkoutDay ? templates[templateIndex] : 'Recovery / Rest';
+    const title = offset === 0 && draft ? draft.workoutName : fallbackTitle;
+    const subtitle =
+      offset === 0 && draft
+        ? `${draft.exercises.length} exercises${draft.splitType ? ` · ${draft.splitType}` : ''}`
+        : isWorkoutDay
+          ? `${(EXERCISE_TEMPLATES[fallbackTitle] || EXERCISE_TEMPLATES.Workout || []).length} planned exercises`
+          : 'Recovery, light cardio, mobility, or full rest';
+
+    return {
+      key: `${dayLabels[calendarIndex]}-${offset}`,
+      label: offset === 0 ? `${dayLabels[calendarIndex]} · Today` : dayLabels[calendarIndex],
+      title,
+      subtitle,
+      isToday: offset === 0,
+      isPrimary: offset === 0 && !!draft,
+    };
+  });
 }
 
 function ExerciseRow({ exercise, isActive, index, onPress }: { exercise: any; isActive: boolean; index: number; onPress: () => void }) {
@@ -163,7 +297,7 @@ function ExerciseRow({ exercise, isActive, index, onPress }: { exercise: any; is
         <View style={{ flex: 1 }}>
           <Text style={{ fontFamily: 'DMSans-SemiBold', fontSize: 14, color: allDone ? colors.textPrimary : isActive ? colors.textPrimary : colors.textSecondary }}>{exercise.name}</Text>
           <Text style={{ fontFamily: 'DMSans', fontSize: 11, color: colors.textTertiary }}>
-            {exercise.muscleGroup} · {exercise.completedSets.length}/{exercise.sets} sets
+            {exercise.muscleGroup} · {exercise.weight > 0 ? `${exercise.weight} lb` : 'Bodyweight'} · {exercise.completedSets.length}/{exercise.sets} sets
           </Text>
         </View>
         <Text style={{ fontFamily: 'JetBrainsMono-SemiBold', fontSize: isActive ? 14 : 13, color: isActive ? colors.textPrimary : colors.textTertiary }}>
@@ -474,6 +608,9 @@ export default function TrainScreen() {
   const [loggerExercise, setLoggerExercise] = useState<any>(null);
   const [showPicker, setShowPicker] = useState(false);
   const [refreshing, setRefreshing] = useState(false);
+  const [recentWorkouts, setRecentWorkouts] = useState<any[]>([]);
+  const [upcomingDraft, setUpcomingDraft] = useState<UpcomingWorkoutDraft | null>(null);
+  const hasLoadedTrainData = useRef(false);
 
   const hasWorkout = exercises.length > 0;
 
@@ -483,6 +620,25 @@ export default function TrainScreen() {
       useWorkoutStore.setState({ restTimerDuration });
     }
   }, [restTimerDuration]);
+
+  useEffect(() => {
+    if (hasLoadedTrainData.current) return;
+    hasLoadedTrainData.current = true;
+
+    (async () => {
+      try {
+        const [history, draft] = await Promise.all([
+          fetchWorkoutHistory(4).catch(() => []),
+          fetchUpcomingWorkoutDraft().catch(() => null),
+        ]);
+        setRecentWorkouts(history);
+        setUpcomingDraft(draft);
+      } catch {
+        setRecentWorkouts([]);
+        setUpcomingDraft(null);
+      }
+    })();
+  }, []);
 
   const handleExercisePress = (exercise: any, index: number) => {
     setActiveExercise(index);
@@ -530,7 +686,11 @@ export default function TrainScreen() {
 
   const handleRefresh = async () => {
     setRefreshing(true);
-    await useWorkoutStore.getState().loadWorkout();
+    await Promise.all([
+      useWorkoutStore.getState().loadWorkout(),
+      fetchWorkoutHistory(4).then(setRecentWorkouts).catch(() => setRecentWorkouts([])),
+      fetchUpcomingWorkoutDraft().then(setUpcomingDraft).catch(() => setUpcomingDraft(null)),
+    ]);
     setRefreshing(false);
   };
 
@@ -540,6 +700,7 @@ export default function TrainScreen() {
   const completedSets = exercises.reduce((sum, e) => sum + e.completedSets.length, 0);
   const allDone = hasWorkout && completedSets >= totalSets;
   const workoutDayLabel = dayNumber > 0 ? `Day ${dayNumber}` : 'Up next';
+  const weekAheadItems = buildWeekAheadItems(trainingSplit, upcomingDraft);
 
   return (
     <SafeAreaView style={{ flex: 1, backgroundColor: colors.bg }}>
@@ -559,7 +720,7 @@ export default function TrainScreen() {
 
         <TodayHero
           hasWorkout={hasWorkout}
-          workoutName={workoutName || 'No session loaded'}
+          workoutName={workoutName || upcomingDraft?.workoutName || 'No session loaded'}
           workoutDayLabel={workoutDayLabel}
           completedSets={completedSets}
           totalSets={totalSets}
@@ -579,6 +740,8 @@ export default function TrainScreen() {
         />
 
         <ReadinessCard />
+        <PreviousWorkoutsSection workouts={recentWorkouts} />
+        <WeekAheadSection items={weekAheadItems} />
         <CoachPreview />
 
         {hasWorkout ? (

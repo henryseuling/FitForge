@@ -136,6 +136,7 @@ async function callClaude(
     systemPrompt,
     userMessage,
     maxTokens,
+    modelPreference: 'workout',
   });
   return text;
 }

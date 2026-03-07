@@ -174,6 +174,7 @@ function WorkoutStreak() {
 
 function WorkoutCalendarHeatMap() {
   const { workoutHistory } = useProgressStore();
+  const [monthOffset, setMonthOffset] = useState(0);
 
   const calendarData = useMemo(() => {
     const workoutDates = new Set(
@@ -183,8 +184,9 @@ function WorkoutCalendarHeatMap() {
     );
 
     const today = new Date();
-    const monthStart = new Date(today.getFullYear(), today.getMonth(), 1);
-    const monthEnd = new Date(today.getFullYear(), today.getMonth() + 1, 0);
+    const viewedMonth = new Date(today.getFullYear(), today.getMonth() + monthOffset, 1);
+    const monthStart = new Date(viewedMonth.getFullYear(), viewedMonth.getMonth(), 1);
+    const monthEnd = new Date(viewedMonth.getFullYear(), viewedMonth.getMonth() + 1, 0);
     const startDate = new Date(monthStart);
     startDate.setDate(monthStart.getDate() - monthStart.getDay());
 
@@ -200,7 +202,9 @@ function WorkoutCalendarHeatMap() {
         dayOfWeek: current.getDay(),
         hasWorkout: workoutDates.has(dateStr),
         isToday: dateStr === today.toISOString().split('T')[0],
-        isCurrentMonth: current.getMonth() === today.getMonth(),
+        isCurrentMonth:
+          current.getMonth() === viewedMonth.getMonth() &&
+          current.getFullYear() === viewedMonth.getFullYear(),
         dayLabel: String(current.getDate()),
       });
       current.setDate(current.getDate() + 1);
@@ -216,17 +220,76 @@ function WorkoutCalendarHeatMap() {
     return {
       weeks,
       workoutCount,
-      monthLabel: today.toLocaleDateString('en-US', { month: 'long', year: 'numeric' }),
+      monthLabel: viewedMonth.toLocaleDateString('en-US', { month: 'long', year: 'numeric' }),
+      isCurrentMonth:
+        viewedMonth.getMonth() === today.getMonth() &&
+        viewedMonth.getFullYear() === today.getFullYear(),
     };
-  }, [workoutHistory]);
+  }, [workoutHistory, monthOffset]);
 
   const dayLabels = ['S', 'M', 'T', 'W', 'T', 'F', 'S'];
 
   return (
     <View style={{ marginHorizontal: 20, marginTop: 12, padding: 16, borderRadius: 16, backgroundColor: colors.surface, borderWidth: 1, borderColor: 'rgba(255,255,255,0.04)', gap: 12 }}>
       <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' }}>
-        <Text style={{ fontFamily: 'DMSans-SemiBold', fontSize: 14, color: colors.textPrimary }}>Activity</Text>
-        <Text style={{ fontFamily: 'DMSans', fontSize: 12, color: colors.textSecondary }}>{calendarData.workoutCount} workouts in {calendarData.monthLabel}</Text>
+        <View style={{ gap: 2 }}>
+          <Text style={{ fontFamily: 'DMSans-SemiBold', fontSize: 14, color: colors.textPrimary }}>Activity</Text>
+          <Text style={{ fontFamily: 'DMSans', fontSize: 12, color: colors.textSecondary }}>{calendarData.workoutCount} workouts in {calendarData.monthLabel}</Text>
+        </View>
+        <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
+          <Pressable
+            onPress={() => {
+              Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+              setMonthOffset((current) => current - 1);
+            }}
+            style={{
+              width: 30,
+              height: 30,
+              borderRadius: 10,
+              backgroundColor: colors.elevated,
+              alignItems: 'center',
+              justifyContent: 'center',
+            }}
+          >
+            <Text style={{ fontFamily: 'DMSans-Bold', fontSize: 16, color: colors.textSecondary }}>‹</Text>
+          </Pressable>
+          <Pressable
+            onPress={() => {
+              Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+              setMonthOffset(0);
+            }}
+            disabled={calendarData.isCurrentMonth}
+            style={{
+              paddingHorizontal: 10,
+              paddingVertical: 6,
+              borderRadius: 10,
+              backgroundColor: calendarData.isCurrentMonth ? colors.elevated : colors.primaryMuted,
+              opacity: calendarData.isCurrentMonth ? 0.6 : 1,
+            }}
+          >
+            <Text style={{ fontFamily: 'DMSans-SemiBold', fontSize: 11, color: calendarData.isCurrentMonth ? colors.textTertiary : colors.primary }}>
+              Today
+            </Text>
+          </Pressable>
+          <Pressable
+            onPress={() => {
+              Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+              setMonthOffset((current) => Math.min(current + 1, 0));
+            }}
+            disabled={calendarData.isCurrentMonth}
+            style={{
+              width: 30,
+              height: 30,
+              borderRadius: 10,
+              backgroundColor: colors.elevated,
+              alignItems: 'center',
+              justifyContent: 'center',
+              opacity: calendarData.isCurrentMonth ? 0.5 : 1,
+            }}
+          >
+            <Text style={{ fontFamily: 'DMSans-Bold', fontSize: 16, color: colors.textSecondary }}>›</Text>
+          </Pressable>
+        </View>
       </View>
 
       {/* Day of week headers */}

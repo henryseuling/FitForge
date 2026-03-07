@@ -30,6 +30,10 @@ export default function EditScheduleScreen() {
     { id: 'bodyweight', label: 'Bodyweight' },
     { id: 'cardio', label: 'Cardio Equipment' },
   ];
+  const STANDARD_FULL_GYM = EQUIPMENT_OPTIONS.map((option) => option.id);
+  const isStandardFullGym =
+    equipment.length === STANDARD_FULL_GYM.length &&
+    STANDARD_FULL_GYM.every((item) => equipment.includes(item));
 
   const handleSave = () => {
     if (frequency < 2 || frequency > 7) {
@@ -436,7 +440,47 @@ export default function EditScheduleScreen() {
           </Text>
 
           <View style={{ gap: 6 }}>
-            <FieldLabel text="Select All That Apply" />
+            <FieldLabel text="Standard Full Gym Or Custom Setup" />
+            <View style={{ flexDirection: 'row', gap: 8 }}>
+              <Pressable
+                onPress={() => {
+                  setEquipment(STANDARD_FULL_GYM);
+                  Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+                }}
+                style={{
+                  flex: 1,
+                  paddingVertical: 12,
+                  paddingHorizontal: 14,
+                  borderRadius: 12,
+                  backgroundColor: isStandardFullGym ? colors.primary : colors.surface,
+                  borderWidth: 1,
+                  borderColor: isStandardFullGym ? colors.primary : 'rgba(255,255,255,0.06)',
+                }}
+              >
+                <Text
+                  style={{
+                    fontFamily: isStandardFullGym ? 'DMSans-SemiBold' : 'DMSans',
+                    fontSize: 13,
+                    color: isStandardFullGym ? colors.bg : colors.textPrimary,
+                  }}
+                >
+                  Standard Full Gym
+                </Text>
+                <Text
+                  style={{
+                    fontFamily: 'DMSans',
+                    fontSize: 11,
+                    color: isStandardFullGym ? 'rgba(8,10,19,0.72)' : colors.textTertiary,
+                    marginTop: 4,
+                    lineHeight: 16,
+                  }}
+                >
+                  Barbell, dumbbell, cables, machines, bands, cardio, and bodyweight.
+                </Text>
+              </Pressable>
+            </View>
+
+            <FieldLabel text="Customize If Needed" />
             <View style={{ gap: 8 }}>
               {EQUIPMENT_OPTIONS.map((item) => (
                 <EquipmentCheckbox
@@ -466,9 +510,11 @@ export default function EditScheduleScreen() {
             >
               {equipment.length === 0
                 ? 'Select at least one equipment type'
-                : `${equipment.length} equipment type${
+                : isStandardFullGym
+                  ? 'Standard Full Gym selected'
+                  : `${equipment.length} equipment type${
                     equipment.length === 1 ? '' : 's'
-                  } selected`}
+                    } selected`}
             </Text>
           </View>
         </View>
@@ -537,9 +583,14 @@ export default function EditScheduleScreen() {
                 }}
               >
                 {user.equipment && user.equipment.length > 0
-                  ? user.equipment.length === 1
-                    ? '1 type'
-                    : `${user.equipment.length} types`
+                  ? (
+                    user.equipment.length === STANDARD_FULL_GYM.length &&
+                    STANDARD_FULL_GYM.every((item) => user.equipment.includes(item))
+                  )
+                    ? 'Standard Full Gym'
+                    : user.equipment.length === 1
+                      ? '1 type'
+                      : `${user.equipment.length} types`
                   : 'Not set'}
               </Text>
             </View>

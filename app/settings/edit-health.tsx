@@ -51,12 +51,21 @@ export default function EditHealthScreen() {
         return;
       }
 
-      const { initHealthKit, getReadinessScore } = require('@/lib/health');
+      const { initHealthKit, getHealthKitSupportStatus, getReadinessScore } = require('@/lib/health');
+      const support = await getHealthKitSupportStatus();
+      if (!support.available) {
+        Alert.alert(
+          'HealthKit unavailable in this build',
+          'This build does not currently expose Apple Health to FitForge. Most commonly this means the HealthKit capability is not enabled for the bundle identifier in Apple Developer, and the app must be rebuilt after enabling it.'
+        );
+        return;
+      }
+
       const initialized = await initHealthKit();
       if (!initialized) {
         Alert.alert(
           'Permission needed',
-          'FitForge could not access Apple Health. Check iPhone Settings > Health > Data Access & Devices.'
+          'FitForge could not access Apple Health. Check iPhone Settings > Health > Data Access & Devices > FitForge, make sure permissions are enabled, then try again. If the Health access page for FitForge does not exist, this build likely needs the HealthKit capability enabled and a rebuild.'
         );
         return;
       }
@@ -145,12 +154,21 @@ export default function EditHealthScreen() {
     }
     setSyncing(true);
     try {
-      const { initHealthKit, getReadinessScore } = require('@/lib/health');
+      const { initHealthKit, getHealthKitSupportStatus, getReadinessScore } = require('@/lib/health');
+      const support = await getHealthKitSupportStatus();
+      if (!support.available) {
+        Alert.alert(
+          'HealthKit unavailable in this build',
+          'This build does not currently expose Apple Health to FitForge. Enable the HealthKit capability for the app bundle identifier in Apple Developer, rebuild the app, and try again.'
+        );
+        return;
+      }
+
       const initialized = await initHealthKit();
       if (!initialized) {
         Alert.alert(
           'Permission needed',
-          'FitForge could not access Apple Health. Check iPhone Settings > Health > Data Access & Devices.'
+          'FitForge could not access Apple Health. Check iPhone Settings > Health > Data Access & Devices > FitForge, confirm permissions are enabled, then try again. If FitForge does not appear there, the app build likely lacks the HealthKit capability.'
         );
         return;
       }

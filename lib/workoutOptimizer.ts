@@ -155,6 +155,27 @@ function recentExerciseNames(history: WorkoutHistoryEntry[], limit = 2) {
     .filter(Boolean);
 }
 
+function inferMovementPattern(exercise: ExerciseDefinition): string {
+  const name = normalizeName(exercise.name);
+
+  if (/(bench|chest press|push-up|push up|dip)/.test(name)) return 'chest_press';
+  if (/(shoulder press|overhead press|arnold press)/.test(name)) return 'shoulder_press';
+  if (/(fly|crossover)/.test(name)) return 'chest_isolation';
+  if (/(row)/.test(name)) return 'row';
+  if (/(pull-up|pull up|pulldown|lat pulldown)/.test(name)) return 'vertical_pull';
+  if (/(deadlift|rdl|romanian deadlift|hip thrust)/.test(name)) return 'hinge';
+  if (/(squat|leg press|front squat|hack squat)/.test(name)) return 'squat';
+  if (/(lunge|split squat|step-up|step up)/.test(name)) return 'unilateral_leg';
+  if (/(leg curl)/.test(name)) return 'hamstring_isolation';
+  if (/(leg extension)/.test(name)) return 'quad_isolation';
+  if (/(curl)/.test(name)) return 'curl';
+  if (/(tricep|extension|pushdown|skull crusher)/.test(name)) return 'tricep_isolation';
+  if (/(lateral raise|rear delt|face pull)/.test(name)) return 'shoulder_isolation';
+  if (/(calf)/.test(name)) return 'calves';
+  if (/(plank|crunch|core|ab)/.test(name)) return 'core';
+  return `${exercise.primaryMuscle}_${exercise.movementType}`;
+}
+
 function buildExerciseScore(params: {
   exercise: ExerciseDefinition;
   profiles: ExerciseProfile[];
@@ -233,17 +254,22 @@ function selectExercises(params: {
   const exerciseCount = params.availableTime <= 40 ? 4 : params.availableTime <= 55 ? 5 : 6;
   const selected: ExerciseDefinition[] = [];
   const covered = new Set<string>();
+  const usedPatterns = new Set<string>();
 
   for (const exercise of pool) {
     if (selected.length >= exerciseCount) break;
     const primary = exercise.primaryMuscle;
+    const pattern = inferMovementPattern(exercise);
     if (selected.length === 0 && exercise.movementType !== 'compound') continue;
+    if (usedPatterns.has(pattern)) continue;
 
     if (!covered.has(primary) || selected.length < 2 || goalMode === 'strength') {
       selected.push(exercise);
       covered.add(primary);
+      usedPatterns.add(pattern);
     } else if (selected.length < exerciseCount && exercise.movementType === 'isolation') {
       selected.push(exercise);
+      usedPatterns.add(pattern);
     }
   }
 

@@ -31,7 +31,7 @@ const EQUIPMENT_OPTIONS = [
   'Dumbbells',
   'Barbell & Rack',
   'Cables & Machines',
-  'Full Gym',
+  'Standard Full Gym',
   'Resistance Bands',
 ];
 const FREQUENCY_OPTIONS = [2, 3, 4, 5, 6];

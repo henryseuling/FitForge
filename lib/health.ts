@@ -29,15 +29,62 @@ function promisify<T>(
   });
 }
 
+function promisifyNoOptions<T>(
+  fn: (cb: (err: any, results: T) => void) => void
+): Promise<T> {
+  return new Promise((resolve, reject) => {
+    fn.call(AppleHealthKit, (err: any, results: T) => {
+      if (err) reject(err);
+      else resolve(results);
+    });
+  });
+}
+
+export async function getHealthKitSupportStatus(): Promise<{
+  available: boolean;
+  authStatus: unknown | null;
+}> {
+  const available = await promisifyNoOptions<boolean>(AppleHealthKit.isAvailable).catch(() => false);
+  if (!available) {
+    return {
+      available: false,
+      authStatus: null,
+    };
+  }
+
+  const authStatus = await new Promise<unknown | null>((resolve) => {
+    AppleHealthKit.getAuthStatus(permissions, (error: string, results: unknown) => {
+      if (error) {
+        resolve(null);
+        return;
+      }
+      resolve(results);
+    });
+  });
+
+  return {
+    available: true,
+    authStatus,
+  };
+}
+
 export async function initHealthKit(): Promise<boolean> {
   return new Promise((resolve) => {
-    AppleHealthKit.initHealthKit(permissions, (error: string) => {
-      if (error) {
-        console.warn('HealthKit init failed:', error);
+    AppleHealthKit.isAvailable((availabilityError: unknown, available: boolean) => {
+      if (availabilityError || !available) {
+        console.warn('HealthKit unavailable in this build:', availabilityError);
         resolve(false);
-      } else {
-        resolve(true);
+        return;
       }
+
+      AppleHealthKit.initHealthKit(permissions, (error: string) => {
+        if (error) {
+          console.warn('HealthKit init failed:', error);
+          resolve(false);
+        } else {
+          resolve(true);
+        }
+      });
     });
   });
 }

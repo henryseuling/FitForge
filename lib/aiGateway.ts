@@ -4,6 +4,8 @@ interface GatewayEnvelope<T> {
   data: T;
 }
 
+export type AIModelPreference = 'default' | 'workout' | 'vision';
+
 async function invokeAIGateway<T>(body: Record<string, unknown>): Promise<T> {
   const { data, error } = await supabase.functions.invoke<GatewayEnvelope<T> | T>('ai-gateway', {
     body,
@@ -29,6 +31,7 @@ export async function invokeChatAI(body: {
   tools?: unknown[];
   messages: unknown[];
   maxTokens?: number;
+  modelPreference?: AIModelPreference;
 }) {
   return invokeAIGateway<{
     content: Array<{ type: string; text?: string; id?: string; name?: string; input?: Record<string, unknown> }>;
@@ -45,6 +48,7 @@ export async function invokeToolFollowUpAI(body: {
   toolCalls: unknown[];
   toolResults: unknown[];
   maxTokens?: number;
+  modelPreference?: AIModelPreference;
 }) {
   return invokeAIGateway<{
     content: Array<{ type: string; text?: string; id?: string; name?: string; input?: Record<string, unknown> }>;
@@ -58,6 +62,7 @@ export async function invokeCompletionAI(body: {
   systemPrompt: string;
   userMessage: string;
   maxTokens?: number;
+  modelPreference?: AIModelPreference;
 }) {
   return invokeAIGateway<{ text: string }>({
     task: 'completion',
@@ -70,6 +75,7 @@ export async function invokeVisionAI(body: {
   imageBase64: string;
   mediaType?: string;
   maxTokens?: number;
+  modelPreference?: AIModelPreference;
 }) {
   return invokeAIGateway<{ text: string }>({
     task: 'vision',

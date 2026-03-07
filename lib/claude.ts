@@ -1,7 +1,7 @@
 // Claude AI Coach client — with tool use support
 
 import { AI_TOOLS } from './aiTools';
-import { invokeChatAI, invokeToolFollowUpAI } from './aiGateway';
+import { invokeChatAI, invokeToolFollowUpAI, type AIModelPreference } from './aiGateway';
 import type { CoachContext } from './coachMemory';
 import {
   buildWorkoutAgentDirective,
@@ -247,12 +247,46 @@ function isTextBlock(block: GatewayContentBlock): block is GatewayTextBlock {
   return block.type === 'text' && typeof (block as Partial<GatewayTextBlock>).text === 'string';
 }
 
+function prefersWorkoutModel(message: string): boolean {
+  const normalized = message.toLowerCase();
+  return [
+    'next workout',
+    'today workout',
+    'workout today',
+    'build workout',
+    'create workout',
+    'plan workout',
+    'adjust workout',
+    'change workout',
+    'swap exercise',
+    'replace exercise',
+    'avoid squat',
+    'avoid bench',
+    'lower body',
+    'upper body',
+    'push day',
+    'pull day',
+    'leg day',
+    'make it 45',
+    'make it 60',
+  ].some((phrase) => normalized.includes(phrase));
+}
+
+function getFollowUpModelPreference(toolCalls: ToolCall[]): AIModelPreference {
+  return toolCalls.some(
+    (toolCall) => toolCall.name === 'optimize_next_workout' || toolCall.name === 'adjust_next_workout'
+  )
+    ? 'workout'
+    : 'default';
+}
+
 export async function sendMessage(
   messages: Message[],
   state: AppStateSnapshot,
   coachContext: CoachContext
 ): Promise<ClaudeResponse> {
   const systemPrompt = buildSystemPrompt(state, coachContext);
+  const latestUserMessage = [...messages].reverse().find((message) => message.role === 'user')?.content ?? '';
 
   try {
     const data = await invokeChatAI({
@@ -262,7 +296,8 @@ export async function sendMessage(
         role: m.role,
         content: m.content,
       })),
-      maxTokens: 1024,
+      maxTokens: 640,
+      modelPreference: prefersWorkoutModel(latestUserMessage) ? 'workout' : 'default',
     });
 
     let text = '';
@@ -318,7 +353,8 @@ export async function sendToolResults(
         tool_use_id: tr.id,
         content: tr.result,
       })),
-      maxTokens: 1024,
+      maxTokens: 512,
+      modelPreference: getFollowUpModelPreference(toolCalls),
     });
 
     let text = '';
