@@ -5,6 +5,7 @@ import {
   fetchGoals,
   fetchNextSessionPlan,
 } from './api';
+import { fetchUpcomingWorkoutDraft } from './upcomingWorkout';
 
 export interface CoachContext {
   memories: Array<{
@@ -40,15 +41,30 @@ export interface CoachContext {
     adjustments?: unknown;
     coach_notes?: string | null;
   } | null;
+  upcomingWorkout: {
+    workoutName: string;
+    dayNumber: number;
+    splitType: string;
+    sessionNotes: string;
+    exercises: Array<{
+      name: string;
+      muscleGroup: string;
+      sets: number;
+      repsMin: number;
+      repsMax: number;
+      weight: number;
+    }>;
+  } | null;
 }
 
 export async function buildCoachContext(): Promise<CoachContext> {
-  const [memories, goals, exerciseProfiles, recentObservations, nextSessionPlan] = await Promise.all([
+  const [memories, goals, exerciseProfiles, recentObservations, nextSessionPlan, upcomingWorkout] = await Promise.all([
     fetchCoachMemories(8).catch(() => []),
     fetchGoals().catch(() => []),
     fetchExerciseProfiles().catch(() => []),
     fetchAIObservations(6).catch(() => []),
     fetchNextSessionPlan().catch(() => null),
+    fetchUpcomingWorkoutDraft().catch(() => null),
   ]);
 
   return {
@@ -89,6 +105,22 @@ export async function buildCoachContext(): Promise<CoachContext> {
           key_lifts: nextSessionPlan.key_lifts,
           adjustments: nextSessionPlan.adjustments,
           coach_notes: nextSessionPlan.coach_notes,
+        }
+      : null,
+    upcomingWorkout: upcomingWorkout
+      ? {
+          workoutName: upcomingWorkout.workoutName,
+          dayNumber: upcomingWorkout.dayNumber,
+          splitType: upcomingWorkout.splitType,
+          sessionNotes: upcomingWorkout.sessionNotes,
+          exercises: upcomingWorkout.exercises.map((exercise) => ({
+            name: exercise.name,
+            muscleGroup: exercise.muscleGroup,
+            sets: exercise.sets,
+            repsMin: exercise.repsMin,
+            repsMax: exercise.repsMax,
+            weight: exercise.weight,
+          })),
         }
       : null,
   };

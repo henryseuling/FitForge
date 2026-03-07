@@ -4,6 +4,7 @@ import {
   logSet as apiLogSet,
   createWorkout,
 } from '@/lib/api';
+import { fetchUpcomingWorkoutDraft } from '@/lib/upcomingWorkout';
 
 // ─── Types ─────────────────────────────────────────────────────
 
@@ -97,6 +98,7 @@ interface WorkoutState {
   updateReadiness: (data: { score: number; hrv: number; restingHR: number; sleepScore: number; recoveryScore: number }) => void;
   startWorkout: () => Promise<void>;
   loadWorkout: () => Promise<void>;
+  hydrateUpcomingWorkout: () => Promise<boolean>;
   reset: () => void;
 
   // v2 actions
@@ -174,6 +176,39 @@ const INITIAL_STATE = {
 export const useWorkoutStore = create<WorkoutState>((set, get) => ({
   ...INITIAL_STATE,
 
+  hydrateUpcomingWorkout: async () => {
+    const current = get();
+    if (current.workoutStartedAt || current.exercises.length > 0 || current.workoutName) {
+      return false;
+    }
+
+    const draft = await fetchUpcomingWorkoutDraft();
+    if (!draft) return false;
+
+    set({
+      workoutName: draft.workoutName,
+      dayNumber: draft.dayNumber,
+      splitType: draft.splitType,
+      sessionNotes: draft.sessionNotes,
+      activeExerciseIndex: 0,
+      exercises: draft.exercises.map((exercise) =>
+        defaultExercise({
+          id: exercise.id,
+          name: exercise.name,
+          muscleGroup: exercise.muscleGroup,
+          sets: exercise.sets,
+          repsMin: exercise.repsMin,
+          repsMax: exercise.repsMax,
+          weight: exercise.weight,
+          estimated1RM: exercise.estimated1RM,
+          exerciseNotes: exercise.exerciseNotes,
+        })
+      ),
+    });
+
+    return true;
+  },
+
   logSet: (exerciseId, completedSet) => {
     const cs = defaultCompletedSet(completedSet);
     set((state) => ({
@@ -222,6 +257,10 @@ export const useWorkoutStore = create<WorkoutState>((set, get) => ({
     }),
 
   startWorkout: async () => {
+    if (!get().workoutName || get().exercises.length === 0) {
+      await get().hydrateUpcomingWorkout();
+    }
+
     const startedAt = Date.now();
     set({ workoutStartedAt: startedAt, workoutId: null });
     const state = get();
@@ -280,7 +319,10 @@ export const useWorkoutStore = create<WorkoutState>((set, get) => ({
   loadWorkout: async () => {
     try {
       const workout = await fetchTodayWorkout();
-      if (!workout) return;
+      if (!workout) {
+        await get().hydrateUpcomingWorkout();
+        return;
+      }
 
       set({
         workoutId: workout.id,

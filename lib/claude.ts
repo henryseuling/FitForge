@@ -3,6 +3,11 @@
 import { AI_TOOLS } from './aiTools';
 import { invokeChatAI, invokeToolFollowUpAI } from './aiGateway';
 import type { CoachContext } from './coachMemory';
+import {
+  buildWorkoutAgentDirective,
+  buildWorkoutAgentProfileFromChat,
+  formatWorkoutAgentSection,
+} from './workoutAgent';
 import type { Meal } from '@/stores/useNutritionStore';
 import type { KeyLift } from '@/stores/useProgressStore';
 import type { Exercise } from '@/stores/useWorkoutStore';
@@ -47,6 +52,12 @@ export interface AppStateSnapshot {
     weight: number;
     streak: number;
   };
+  health?: {
+    hrv: number | null;
+    restingHR: number | null;
+    sleepScore: number | null;
+    recoveryScore: number | null;
+  };
 }
 
 export interface ToolCall {
@@ -81,7 +92,9 @@ function formatExercise(ex: Exercise, idx: number, activeIdx: number): string {
 }
 
 export function buildSystemPrompt(state: AppStateSnapshot, coachContext: CoachContext): string {
-  const { user, workout, nutrition, progress } = state;
+  const { user, workout, nutrition, progress, health } = state;
+  const hasLoadedWorkout = workout.exercises.length > 0 || Boolean(workout.workoutName);
+  const workoutAgent = buildWorkoutAgentProfileFromChat(state, coachContext);
 
   const exerciseLines = workout.exercises
     .map((ex, i) => formatExercise(ex, i, workout.activeExerciseIndex))
@@ -123,23 +136,57 @@ export function buildSystemPrompt(state: AppStateSnapshot, coachContext: CoachCo
         .join('\n')
     : '';
 
+  const upcomingWorkoutLines = coachContext.upcomingWorkout
+    ? coachContext.upcomingWorkout.exercises
+        .map(
+          (exercise) =>
+            `  ${exercise.name} (${exercise.muscleGroup}) — ${exercise.sets} sets of ${exercise.repsMin}${exercise.repsMax !== exercise.repsMin ? `-${exercise.repsMax}` : ''} reps @ ${exercise.weight || '?'}lb`
+        )
+        .join('\n')
+    : '';
+
+  const healthLines = health
+    ? [
+        health.hrv != null ? `- HRV: ${health.hrv} ms` : '',
+        health.restingHR != null ? `- Resting HR: ${health.restingHR} bpm` : '',
+        health.sleepScore != null ? `- Sleep score: ${health.sleepScore}/100` : '',
+        health.recoveryScore != null ? `- Recovery score: ${health.recoveryScore}/100` : '',
+      ]
+        .filter(Boolean)
+        .join('\n')
+    : '';
+
+  const upcomingWorkoutSection = coachContext.upcomingWorkout
+    ? `Upcoming workout draft:
+- Name: ${coachContext.upcomingWorkout.workoutName}
+- Day: ${coachContext.upcomingWorkout.dayNumber || 'Next available'}
+- Split: ${coachContext.upcomingWorkout.splitType || 'Planned session'}
+${coachContext.upcomingWorkout.sessionNotes ? `- Notes: ${coachContext.upcomingWorkout.sessionNotes}\n` : ''}${upcomingWorkoutLines || '  (no draft exercises available)'}`
+    : 'Upcoming workout draft:\n  (none available yet)';
+
   return `You are FitForge Coach, an expert AI fitness and nutrition coach. You have access to the user's live workout data, body metrics, and nutrition logs.
 
+${buildWorkoutAgentDirective(workoutAgent, 'chat')}
+
 Your personality:
-- Direct, encouraging, and knowledgeable
-- You reference the user's actual data when giving advice
-- You keep responses concise — this is a mobile chat interface
-- You use fitness terminology naturally but explain when needed
-- You proactively suggest adjustments based on readiness scores and recovery data
+- Direct, sharp, and high-context
+- You sound like the same coach across sessions, not a generic chatbot
+- You reference the user's real performance, recovery, and preferences before giving advice
+- You keep responses concise because this is a mobile chat interface
+- You proactively suggest the next best action based on readiness and the upcoming session
 
 OPERATING RULES:
 - Chat is the user's primary control surface. Prefer taking action with tools over telling the user to navigate elsewhere.
 - Use tools when the user asks to log sets, meals, water, profile changes, goals, or workout edits.
+- If the user asks what their next workout is, asks for a workout to be created, or wants the upcoming session changed, use the workout optimization tools instead of saying you cannot.
 - If the user states a durable preference, limitation, dislike, injury, or schedule constraint, save it with remember_preference.
 - If confidence is low, ask exactly one short clarifying question instead of guessing.
 - Always confirm what you changed after calling a tool.
+- Do not give generic workout advice if athlete-specific context below is sufficient to be specific.
 
 When logging a set, use the exercise "id" field from the list below and calculate the next setNumber based on the number of completedSets.
+
+${formatWorkoutAgentSection(workoutAgent)}
 
 Current user profile:
 - Name: ${user.name}
@@ -148,11 +195,11 @@ Current user profile:
 - Training: ${user.trainingSplit}
 - Progressive Overload: ${user.progressiveOverload ? 'ON' : 'OFF'}
 
-Current workout: ${workout.workoutName} (Day ${workout.dayNumber})
+Current workout: ${hasLoadedWorkout ? `${workout.workoutName} (Day ${workout.dayNumber || '?'})` : 'No active workout loaded'}
 Readiness: ${workout.readinessScore}/100
 Started: ${workout.workoutStartedAt ? 'Yes' : 'Not yet'}
 Exercises:
-${exerciseLines}
+${exerciseLines || '  (none loaded)'}
 
 Nutrition targets: ${nutrition.calorieTarget} kcal — ${nutrition.proteinTarget}P / ${nutrition.carbsTarget}C / ${nutrition.fatTarget}F
 Today's intake: ${nutrition.totalCalories} kcal — ${nutrition.totalProtein}P / ${nutrition.totalCarbs}C / ${nutrition.totalFat}F
@@ -164,6 +211,9 @@ Key lifts:
 ${liftLines}
 Body weight: ${progress.weight} lb
 Streak: ${progress.streak} days
+
+Latest health context:
+${healthLines || '  (no live health metrics synced yet)'}
 
 Durable coach memory:
 ${memoryLines || '  (none saved yet)'}
@@ -178,7 +228,9 @@ Recent coaching observations:
 ${observationLines || '  (none yet)'}
 
 Next-session plan:
-${nextPlanLines || '  (not generated yet)'}`;
+${nextPlanLines || '  (not generated yet)'}
+
+${upcomingWorkoutSection}`;
 }
 
 function isToolUseBlock(block: GatewayContentBlock): block is GatewayToolUseBlock {

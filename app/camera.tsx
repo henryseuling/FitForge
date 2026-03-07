@@ -2,13 +2,15 @@ import React, { useState, useRef } from 'react';
 import { View, Text, Pressable, ActivityIndicator, Alert } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { CameraView, useCameraPermissions } from 'expo-camera';
-import { router } from 'expo-router';
+import { router, useLocalSearchParams } from 'expo-router';
 import Svg, { Path } from 'react-native-svg';
 import { colors } from '@/lib/theme';
 import { analyzeMealPhoto, type ScannedMeal } from '@/lib/meal-scanner';
+import { useChatStore } from '@/stores/useChatStore';
 import { useNutritionStore } from '@/stores/useNutritionStore';
 
 export default function CameraScreen() {
+  const params = useLocalSearchParams<{ source?: string }>();
   const [permission, requestPermission] = useCameraPermissions();
   const [analyzing, setAnalyzing] = useState(false);
   const [result, setResult] = useState<ScannedMeal | null>(null);
@@ -79,6 +81,14 @@ export default function CameraScreen() {
       carbs: result.totalCarbs,
       fat: result.totalFat,
     });
+
+    if (params.source === 'chat') {
+      useChatStore
+        .getState()
+        .addAssistantMessage(
+          `Logged ${result.name} for ${result.totalCalories} kcal (${result.totalProtein}P/${result.totalCarbs}C/${result.totalFat}F). Your daily calories have been updated.`
+        );
+    }
     router.back();
   };
 

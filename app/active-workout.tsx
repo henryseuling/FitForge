@@ -16,7 +16,7 @@ import * as Haptics from 'expo-haptics';
 import { colors } from '@/lib/theme';
 import { useWorkoutStore, type Exercise, type CompletedSet, type CardioEntry, type RecoveryEntry } from '@/stores/useWorkoutStore';
 import { useUserStore } from '@/stores/useUserStore';
-import { completeWorkout } from '@/lib/api';
+import { completeWorkout, fetchGoals } from '@/lib/api';
 import { getExerciseSwapSuggestions, getPostWorkoutAnalysis, completeWorkoutWithIntelligence } from '@/lib/workoutEngine';
 import { getExerciseById } from '@/constants/exercises';
 import { calculateEstimated1RM, getBestSet, formatBestSet, calculatePercentChange, computeSessionStats } from '@/lib/calculations';
@@ -457,8 +457,23 @@ function ExerciseCard({ exercise, isActive, onSetComplete, supersetLabel }: {
 
 // ─── Workout Completion Screen ─────────────────────────────────
 function CompletionScreen({ onDone }: { onDone: () => void }) {
-  const { workoutName, exercises, workoutStartedAt, workoutId, splitType, sessionNotes, cardioEntries, recoveryEntries, setSessionNotes } = useWorkoutStore();
-  const { goals, level, equipment, age, gender, height, weight, frequency } = useUserStore();
+  const {
+    workoutName,
+    exercises,
+    workoutStartedAt,
+    workoutId,
+    splitType,
+    sessionNotes,
+    cardioEntries,
+    recoveryEntries,
+    setSessionNotes,
+    readinessScore,
+    hrv,
+    restingHR,
+    sleepScore,
+    recoveryScore,
+  } = useWorkoutStore();
+  const { goals: profileGoals, level, equipment, age, gender, height, weight, frequency } = useUserStore();
   const duration = workoutStartedAt ? Math.floor((Date.now() - workoutStartedAt) / 60000) : 0;
 
   const stats = computeSessionStats(exercises);
@@ -481,6 +496,12 @@ function CompletionScreen({ onDone }: { onDone: () => void }) {
 
     try {
       if (workoutId) {
+        const liveGoals = await fetchGoals().catch(() => []);
+        const goalTitles = liveGoals
+          .map((goal) => goal?.title?.trim())
+          .filter((goal): goal is string => Boolean(goal));
+        const userGoals = goalTitles.length > 0 ? goalTitles : profileGoals;
+
         const result = await completeWorkoutWithIntelligence({
           workoutId,
           exercises: exercises.map((ex) => ({
@@ -497,7 +518,14 @@ function CompletionScreen({ onDone }: { onDone: () => void }) {
           sessionNotes: notes,
           cardioData: cardioEntries.length > 0 ? cardioEntries : null,
           saunaData: recoveryEntries.length > 0 ? recoveryEntries : null,
-          userGoals: goals,
+          userGoals,
+          healthContext: {
+            readinessScore,
+            hrv,
+            restingHR,
+            sleepScore,
+            recoveryScore,
+          },
         });
 
         // Also get classic post-workout analysis for the UI
@@ -506,7 +534,16 @@ function CompletionScreen({ onDone }: { onDone: () => void }) {
           exercises: exercises.map((ex) => ({ name: ex.name, sets: ex.completedSets.filter((s) => !s.isWarmup).map((s) => ({ weight: s.weight, reps: s.reps })), targetSets: ex.sets, targetReps: ex.repsMin === ex.repsMax ? `${ex.repsMin}` : `${ex.repsMin}-${ex.repsMax}` })),
           duration,
           totalVolume,
-          userContext: { userProfile: { goals, experience: level, equipment, age, gender, height, weight, workoutFrequency: frequency } },
+          userContext: {
+            userProfile: { goals: userGoals, experience: level, equipment, age, gender, height, weight, workoutFrequency: frequency },
+            healthContext: {
+              readinessScore,
+              hrv,
+              restingHR,
+              sleepScore,
+              recoveryScore,
+            },
+          },
         });
         setAnalysis(classicAnalysis);
       }

@@ -6,10 +6,10 @@ import Svg, { Path } from 'react-native-svg';
 import * as Haptics from 'expo-haptics';
 import * as DocumentPicker from 'expo-document-picker';
 import { colors } from '@/lib/theme';
-import { parseStrongCSV, parseFitbodCSV, parseHevyCSV, parseGenericCSV, parseJSON, ParsedWorkout } from '@/lib/importParsers';
+import { parseImportText, ParsedWorkout } from '@/lib/importParsers';
 import { matchAllExercises, ExerciseMatch } from '@/lib/exerciseMatcher';
 import { createDataImport, updateDataImport, bulkInsertImportedWorkouts, upsertExerciseProfile, record1RMHistory } from '@/lib/api';
-import { generateImportCalibration } from '@/lib/workoutEngine';
+import { generateImportCalibration, parseImportedWorkoutsWithAI } from '@/lib/workoutEngine';
 
 type Source = 'strong' | 'fitbod' | 'hevy' | 'csv' | 'json';
 
@@ -38,6 +38,12 @@ export default function ImportDataScreen() {
   const [exerciseMatches, setExerciseMatches] = useState<ExerciseMatch[]>([]);
   const [loading, setLoading] = useState(false);
   const [importResult, setImportResult] = useState<{ workouts: number; exercises: number } | null>(null);
+  const [parseMode, setParseMode] = useState<'local' | 'ai' | null>(null);
+
+  const hasUsableWorkouts = (workouts: ParsedWorkout[]) =>
+    workouts.some((workout) =>
+      workout.exercises.some((exercise) => exercise.sets.some((set) => set.reps > 0 || set.weight > 0))
+    );
 
   const handlePickFile = async () => {
     try {
@@ -58,20 +64,24 @@ export default function ImportDataScreen() {
     }
   };
 
-  const handleParse = useCallback(() => {
+  const handleParse = useCallback(async () => {
     if (!rawText || !source) return;
     setLoading(true);
     try {
-      let workouts: ParsedWorkout[];
-      switch (source) {
-        case 'strong': workouts = parseStrongCSV(rawText); break;
-        case 'fitbod': workouts = parseFitbodCSV(rawText); break;
-        case 'hevy': workouts = parseHevyCSV(rawText); break;
-        case 'json': workouts = parseJSON(rawText); break;
-        case 'csv': workouts = parseGenericCSV(rawText, {}); break;
-        default: workouts = [];
+      let workouts = parseImportText(source, rawText);
+      let mode: 'local' | 'ai' = 'local';
+
+      if (!hasUsableWorkouts(workouts)) {
+        workouts = await parseImportedWorkoutsWithAI({ source, rawText });
+        mode = 'ai';
       }
+
+      if (!hasUsableWorkouts(workouts)) {
+        throw new Error('FitForge could not extract usable workouts from this file. Try a different export format or paste a larger sample.');
+      }
+
       setParsedWorkouts(workouts);
+      setParseMode(mode);
 
       // Get unique exercise names and match them
       const exerciseNames = [...new Set(workouts.flatMap((w) => w.exercises.map((e) => e.name)))];
@@ -292,6 +302,11 @@ export default function ImportDataScreen() {
         </View>
 
         {dateRange && <Text style={{ fontFamily: 'DMSans', fontSize: 13, color: colors.textSecondary }}>{dateRange}</Text>}
+        {parseMode && (
+          <Text style={{ fontFamily: 'DMSans', fontSize: 12, color: colors.textTertiary }}>
+            Parsed with {parseMode === 'local' ? 'direct import parser' : 'AI-assisted fallback'}
+          </Text>
+        )}
 
         {/* Exercise matching */}
         <View style={{ padding: 14, borderRadius: 14, backgroundColor: colors.surface, borderWidth: 1, borderColor: 'rgba(255,255,255,0.04)', gap: 8 }}>

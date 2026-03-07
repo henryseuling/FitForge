@@ -27,10 +27,26 @@ export default function EditTrainingScreen() {
   const SPLITS = ['3-Day Full Body', '4-Day Upper/Lower', '5-Day Rotation', '6-Day PPL'];
   const REST_TIMER_OPTIONS = [60, 90, 120, 150, 180];
 
+  const deriveFrequency = (trainingSplit: string) => {
+    switch (trainingSplit) {
+      case '3-Day Full Body':
+        return 3;
+      case '4-Day Upper/Lower':
+        return 4;
+      case '5-Day Rotation':
+        return 5;
+      case '6-Day PPL':
+        return 6;
+      default:
+        return undefined;
+    }
+  };
+
   const handleSave = () => {
     useUserStore.getState().updateProfile({
       level,
       trainingSplit: split,
+      frequency: deriveFrequency(split),
       restTimerDuration: restTimer,
       progressiveOverload,
     });

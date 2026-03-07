@@ -5,7 +5,13 @@
 import { getExercisesByEquipment } from '@/constants/exercises';
 import { invokeCompletionAI } from './aiGateway';
 import { extractJsonPayload } from './json';
+import {
+  buildWorkoutAgentDirective,
+  buildWorkoutAgentProfileFromUserContext,
+  formatWorkoutAgentSection,
+} from './workoutAgent';
 import type { Exercise, MuscleGroup, EquipmentType } from '@/constants/exercises';
+import type { ParsedWorkout } from './importParsers';
 
 // ── Types ────────────────────────────────────────────────────────
 
@@ -68,7 +74,52 @@ export interface UserContext {
     recentObservations?: any[];
     nextSessionPlan?: any;
   };
+  healthContext?: {
+    readinessScore?: number | null;
+    hrv?: number | null;
+    restingHR?: number | null;
+    sleepScore?: number | null;
+    recoveryScore?: number | null;
+  };
 }
+
+const IMPORT_PARSE_SYSTEM_PROMPT = `You convert exported workout history into normalized JSON for FitForge.
+
+Return only JSON. No markdown. No explanation.
+
+Schema:
+[
+  {
+    "date": "<ISO date/time if available>",
+    "workoutName": "<string>",
+    "exercises": [
+      {
+        "name": "<exercise name>",
+        "sets": [
+          {
+            "setNumber": <number>,
+            "weight": <number>,
+            "reps": <number>,
+            "isWarmup": <boolean>,
+            "rpe": <number|null>,
+            "duration": <number|null>,
+            "distance": <number|null>,
+            "notes": "<string>"
+          }
+        ]
+      }
+    ]
+  }
+]
+
+Rules:
+- Preserve as much usable workout history as possible.
+- Infer workout grouping from dates/session names when needed.
+- Ignore rows that are clearly headers, totals, or empty.
+- If weight is in kg, convert to pounds.
+- If a field is missing, use sensible defaults.
+- Never return null for arrays.
+- Return an empty array only if there is truly no usable workout data.`;
 
 // ── Helpers ──────────────────────────────────────────────────────
 
@@ -87,6 +138,30 @@ async function callClaude(
     maxTokens,
   });
   return text;
+}
+
+export async function parseImportedWorkoutsWithAI(params: {
+  source: string;
+  rawText: string;
+}): Promise<ParsedWorkout[]> {
+  try {
+    const trimmed = params.rawText.trim();
+    if (!trimmed) return [];
+
+    const userMessage = `Source: ${params.source}
+
+Raw export:
+${trimmed.slice(0, 18000)}
+
+Normalize this workout history into the required JSON schema.`;
+
+    const responseText = await callClaude(IMPORT_PARSE_SYSTEM_PROMPT, userMessage, 3072);
+    const parsed = extractJsonPayload<ParsedWorkout[]>(responseText);
+    return Array.isArray(parsed) ? parsed : [];
+  } catch (error) {
+    console.error('AI import parsing error:', error);
+    return [];
+  }
 }
 
 /**
@@ -198,6 +273,7 @@ export async function generateWorkoutPlan(context: UserContext): Promise<Workout
   try {
     const { userProfile, workoutHistory, progressData, previousPlan, preferences } = context;
     const exerciseDB = buildExerciseDatabase(userProfile.equipment);
+    const workoutAgent = buildWorkoutAgentProfileFromUserContext(context);
 
     // Determine week number and phase
     let weekNumber = 1;
@@ -229,7 +305,11 @@ export async function generateWorkoutPlan(context: UserContext): Promise<Workout
       ? `\nNEXT SESSION RECOMMENDATION:\n- Focus: ${calibration.nextSessionPlan.split_type || calibration.nextSessionPlan.splitType || ''}\n- Notes: ${calibration.nextSessionPlan.coach_notes || calibration.nextSessionPlan.coachNotes || ''}`
       : '';
 
-    const userMessage = `Generate a week ${weekNumber} (${phase} phase) workout plan for this user:
+    const userMessage = `${buildWorkoutAgentDirective(workoutAgent, 'planning')}
+
+${formatWorkoutAgentSection(workoutAgent)}
+
+Generate a week ${weekNumber} (${phase} phase) workout plan for this user:
 
 PROFILE:
 - Age: ${userProfile.age}, Gender: ${userProfile.gender}
@@ -374,6 +454,7 @@ export async function getPostWorkoutAnalysis(params: {
 }> {
   try {
     const { workoutName, exercises, duration, totalVolume, userContext } = params;
+    const workoutAgent = buildWorkoutAgentProfileFromUserContext(userContext);
 
     const exerciseSummary = exercises
       .map((ex) => {
@@ -384,7 +465,11 @@ export async function getPostWorkoutAnalysis(params: {
       })
       .join('\n\n');
 
-    const userMessage = `Workout completed: ${workoutName}
+    const userMessage = `${buildWorkoutAgentDirective(workoutAgent, 'analysis')}
+
+${formatWorkoutAgentSection(workoutAgent)}
+
+Workout completed: ${workoutName}
 Duration: ${duration} minutes
 Total volume: ${totalVolume} lbs
 
@@ -686,8 +771,28 @@ export async function generateNextSessionPlan(params: {
   recentObservations: any[];
   workoutHistory: any[];
   userGoals: string[];
+  healthContext?: {
+    readinessScore?: number | null;
+    hrv?: number | null;
+    restingHR?: number | null;
+    sleepScore?: number | null;
+    recoveryScore?: number | null;
+  };
 }): Promise<{ splitType: string; keyLifts: any[]; adjustments: string[]; coachNotes: string }> {
   try {
+    const workoutAgent = buildWorkoutAgentProfileFromUserContext({
+      userProfile: {
+        goals: params.userGoals,
+        experience: 'current',
+        equipment: [],
+        workoutFrequency: 4,
+      },
+      calibration: {
+        exerciseProfiles: params.exerciseProfiles,
+        recentObservations: params.recentObservations,
+      },
+      healthContext: params.healthContext,
+    });
     const profilesSummary = params.exerciseProfiles
       .filter((p) => p.total_times_performed > 0)
       .slice(0, 15)
@@ -699,7 +804,11 @@ export async function generateNextSessionPlan(params: {
       return `${w.name} (${new Date(w.started_at).toLocaleDateString()}): ${exercises}`;
     }).join('\n');
 
-    const userMessage = `Plan next session:
+    const userMessage = `${buildWorkoutAgentDirective(workoutAgent, 'next-session')}
+
+${formatWorkoutAgentSection(workoutAgent)}
+
+Plan next session:
 
 Goals: ${params.userGoals.join(', ')}
 
@@ -806,6 +915,13 @@ export async function completeWorkoutWithIntelligence(params: {
   cardioData: any;
   saunaData: any;
   userGoals: string[];
+  healthContext?: {
+    readinessScore?: number | null;
+    hrv?: number | null;
+    restingHR?: number | null;
+    sleepScore?: number | null;
+    recoveryScore?: number | null;
+  };
 }): Promise<{
   observations: Array<{ category: string; observation: string }>;
   nextPlan: { splitType: string; keyLifts: any[]; adjustments: string[]; coachNotes: string } | null;
@@ -894,6 +1010,7 @@ export async function completeWorkoutWithIntelligence(params: {
       recentObservations: recentObs,
       workoutHistory: history,
       userGoals: params.userGoals,
+      healthContext: params.healthContext,
     });
 
     if (nextPlan && nextPlan.splitType) {

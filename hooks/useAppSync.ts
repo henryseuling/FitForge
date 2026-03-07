@@ -1,10 +1,10 @@
 import { useEffect, useRef } from 'react';
 import { Platform } from 'react-native';
 import { useAuthStore } from '@/stores/useAuthStore';
+import { useUserStore } from '@/stores/useUserStore';
 import { useWorkoutStore } from '@/stores/useWorkoutStore';
 import { useNutritionStore } from '@/stores/useNutritionStore';
 import { useProgressStore } from '@/stores/useProgressStore';
-import { useUserStore } from '@/stores/useUserStore';
 import { useChatStore } from '@/stores/useChatStore';
 import { saveHealthSnapshot } from '@/lib/api';
 
@@ -48,6 +48,14 @@ export function useAppSync() {
 
       const readiness = await getReadinessScore();
       useWorkoutStore.getState().updateReadiness(readiness);
+      const userStore = useUserStore.getState();
+      if (!userStore.integrations.find((item) => item.name === 'Apple Health')?.connected) {
+        userStore.updateProfile({
+          integrations: userStore.integrations.map((item) =>
+            item.name === 'Apple Health' ? { ...item, connected: true } : item
+          ),
+        });
+      }
       saveHealthSnapshot({
         readiness_score: readiness.score,
         hrv: readiness.hrv,

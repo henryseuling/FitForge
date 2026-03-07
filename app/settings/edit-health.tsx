@@ -6,19 +6,23 @@ import {
   ScrollView,
   Alert,
   ActivityIndicator,
+  Platform,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { router } from 'expo-router';
 import * as Haptics from 'expo-haptics';
 import Svg, { Path, Circle } from 'react-native-svg';
 import { colors } from '@/lib/theme';
+import { saveHealthSnapshot } from '@/lib/api';
 import { useUserStore } from '@/stores/useUserStore';
+import { useWorkoutStore } from '@/stores/useWorkoutStore';
 
 export default function EditHealthScreen() {
   const user = useUserStore();
   const [appleHealthLoading, setAppleHealthLoading] = useState(false);
   const [ouraRingLoading, setOuraRingLoading] = useState(false);
   const [syncing, setSyncing] = useState(false);
+  const { readinessScore, hrv, restingHR, sleepScore, recoveryScore } = useWorkoutStore();
 
   const appleHealthConnected =
     user.integrations?.find((i) => i.name === 'Apple Health')?.connected ?? false;
@@ -27,48 +31,65 @@ export default function EditHealthScreen() {
 
   const handleAppleHealthConnect = async () => {
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
+    if (Platform.OS !== 'ios') {
+      Alert.alert('Apple Health unavailable', 'Apple Health integration is only available on iPhone.');
+      return;
+    }
+
     setAppleHealthLoading(true);
+    try {
+      if (appleHealthConnected) {
+        const updated = user.integrations?.map((item) =>
+          item.name === 'Apple Health' ? { ...item, connected: false } : item
+        ) ?? [];
+        useUserStore.getState().updateProfile({ integrations: updated });
+        Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+        Alert.alert(
+          'Apple Health disconnected',
+          'FitForge will stop using Apple Health data until you reconnect it. Existing data stays in your account.'
+        );
+        return;
+      }
 
-    // Simulate API call
-    setTimeout(() => {
+      const { initHealthKit, getReadinessScore } = require('@/lib/health');
+      const initialized = await initHealthKit();
+      if (!initialized) {
+        Alert.alert(
+          'Permission needed',
+          'FitForge could not access Apple Health. Check iPhone Settings > Health > Data Access & Devices.'
+        );
+        return;
+      }
+
+      const readiness = await getReadinessScore();
+      useWorkoutStore.getState().updateReadiness(readiness);
+      await saveHealthSnapshot({
+        readiness_score: readiness.score,
+        hrv: readiness.hrv,
+        resting_hr: readiness.restingHR,
+        sleep_score: readiness.sleepScore,
+        recovery_score: readiness.recoveryScore,
+      });
+
+      const updated = user.integrations?.map((item) =>
+        item.name === 'Apple Health' ? { ...item, connected: true } : item
+      ) ?? [];
+      useUserStore.getState().updateProfile({ integrations: updated });
+
+      Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
       Alert.alert(
-        appleHealthConnected ? 'Disconnect Apple Health?' : 'Connect Apple Health?',
-        appleHealthConnected
-          ? 'Your health data will no longer sync from Apple Health.'
-          : 'Allow FitForge to read and write health data from Apple Health. You can manage permissions in Settings.',
-        [
-          { text: 'Cancel', style: 'cancel', onPress: () => setAppleHealthLoading(false) },
-          {
-            text: appleHealthConnected ? 'Disconnect' : 'Connect',
-            style: appleHealthConnected ? 'destructive' : 'default',
-            onPress: () => {
-              // Update integrations
-              const updated = user.integrations?.map((i) =>
-                i.name === 'Apple Health'
-                  ? { ...i, connected: !appleHealthConnected }
-                  : i
-              ) ?? [];
-
-              useUserStore.getState().updateProfile({
-                integrations: updated,
-              });
-
-              Haptics.notificationAsync(
-                Haptics.NotificationFeedbackType.Success
-              );
-              setAppleHealthLoading(false);
-
-              Alert.alert(
-                'Success',
-                appleHealthConnected
-                  ? 'Apple Health disconnected.'
-                  : 'Apple Health connected! Your health data will now sync.'
-              );
-            },
-          },
-        ]
+        'Apple Health connected',
+        `Synced readiness ${readiness.score}/100 with HRV ${readiness.hrv} ms and sleep score ${readiness.sleepScore}/100.`
       );
-    }, 600);
+    } catch (error) {
+      console.warn('Apple Health connect failed:', error);
+      Alert.alert(
+        'Apple Health sync failed',
+        'FitForge could not complete the HealthKit sync. Confirm permissions are granted and try again.'
+      );
+    } finally {
+      setAppleHealthLoading(false);
+    }
   };
 
   const handleOuraRingConnect = async () => {
@@ -118,14 +139,48 @@ export default function EditHealthScreen() {
 
   const handleSync = async () => {
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
+    if (Platform.OS !== 'ios') {
+      Alert.alert('Health sync unavailable', 'Manual health sync is only available on iPhone.');
+      return;
+    }
     setSyncing(true);
+    try {
+      const { initHealthKit, getReadinessScore } = require('@/lib/health');
+      const initialized = await initHealthKit();
+      if (!initialized) {
+        Alert.alert(
+          'Permission needed',
+          'FitForge could not access Apple Health. Check iPhone Settings > Health > Data Access & Devices.'
+        );
+        return;
+      }
 
-    // Simulate sync
-    setTimeout(() => {
-      setSyncing(false);
+      const readiness = await getReadinessScore();
+      useWorkoutStore.getState().updateReadiness(readiness);
+      await saveHealthSnapshot({
+        readiness_score: readiness.score,
+        hrv: readiness.hrv,
+        resting_hr: readiness.restingHR,
+        sleep_score: readiness.sleepScore,
+        recovery_score: readiness.recoveryScore,
+      });
+
+      const updated = user.integrations?.map((item) =>
+        item.name === 'Apple Health' ? { ...item, connected: true } : item
+      ) ?? [];
+      useUserStore.getState().updateProfile({ integrations: updated });
+
       Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
-      Alert.alert('Sync Complete', 'Health data has been synced successfully.');
-    }, 2000);
+      Alert.alert(
+        'Sync complete',
+        `Readiness ${readiness.score}/100, HRV ${readiness.hrv} ms, resting HR ${readiness.restingHR} bpm.`
+      );
+    } catch (error) {
+      console.warn('Apple Health manual sync failed:', error);
+      Alert.alert('Sync failed', 'FitForge could not sync Apple Health right now.');
+    } finally {
+      setSyncing(false);
+    }
   };
 
   const handleBack = () => {
@@ -307,6 +362,155 @@ export default function EditHealthScreen() {
     );
   }
 
+  function InstructionRow({ step, text }: { step: string; text: string }) {
+    return (
+      <View
+        style={{
+          flexDirection: 'row',
+          alignItems: 'flex-start',
+          gap: 10,
+        }}
+      >
+        <View
+          style={{
+            width: 20,
+            height: 20,
+            borderRadius: 10,
+            backgroundColor: colors.primaryMuted,
+            alignItems: 'center',
+            justifyContent: 'center',
+            marginTop: 1,
+          }}
+        >
+          <Text
+            style={{
+              fontFamily: 'JetBrainsMono-Bold',
+              fontSize: 10,
+              color: colors.primary,
+            }}
+          >
+            {step}
+          </Text>
+        </View>
+        <Text
+          style={{
+            fontFamily: 'DMSans',
+            fontSize: 12,
+            lineHeight: 18,
+            color: colors.textSecondary,
+            flex: 1,
+          }}
+        >
+          {text}
+        </Text>
+      </View>
+    );
+  }
+
+  function AppleHealthSetupCard() {
+    const troubleshooting = [
+      Platform.OS !== 'ios'
+        ? 'Apple Health only works on iPhone. iPad, Android, and web cannot connect to HealthKit.'
+        : 'If no permission prompt appears, open the iPhone Health app, search for FitForge under Sharing > Apps, and allow Heart Rate Variability, Resting Heart Rate, Sleep, and Workouts.',
+      'If the app says it synced but scores stay blank, make sure Apple Health actually has recent HRV, resting heart rate, and sleep data to read.',
+      'After granting permissions, come back here and tap Sync Now so the coach can use the latest recovery context.',
+    ];
+
+    return (
+      <View
+        style={{
+          backgroundColor: colors.surface,
+          borderRadius: 14,
+          padding: 16,
+          borderWidth: 1,
+          borderColor: 'rgba(232, 168, 56, 0.12)',
+          gap: 12,
+        }}
+      >
+        <View style={{ gap: 4 }}>
+          <Text
+            style={{
+              fontFamily: 'DMSans-SemiBold',
+              fontSize: 15,
+              color: colors.textPrimary,
+            }}
+          >
+            How to connect Apple Health
+          </Text>
+          <Text
+            style={{
+              fontFamily: 'DMSans',
+              fontSize: 12,
+              lineHeight: 18,
+              color: colors.textSecondary,
+            }}
+          >
+            FitForge uses Apple Health to personalize readiness, recovery, and coach recommendations.
+          </Text>
+        </View>
+
+        <View style={{ gap: 10 }}>
+          <InstructionRow step="1" text="Use FitForge on an iPhone build. Apple Health will not connect on Android, web, or unsupported simulator flows." />
+          <InstructionRow step="2" text="Tap Connect on the Apple Health card below. iOS should show a Health permission sheet the first time." />
+          <InstructionRow step="3" text="Allow FitForge to read Heart Rate Variability, Resting Heart Rate, Sleep, and Workouts so readiness can populate." />
+          <InstructionRow step="4" text="Return to this screen and tap Sync Now. Once the sync succeeds, chat will use that recovery data in its advice." />
+        </View>
+
+        <View
+          style={{
+            paddingTop: 12,
+            borderTopWidth: 1,
+            borderTopColor: 'rgba(255,255,255,0.04)',
+            gap: 8,
+          }}
+        >
+          <Text
+            style={{
+              fontFamily: 'DMSans-Medium',
+              fontSize: 11,
+              color: colors.textTertiary,
+              textTransform: 'uppercase',
+              letterSpacing: 0.7,
+            }}
+          >
+            Troubleshooting
+          </Text>
+          {troubleshooting.map((item) => (
+            <View
+              key={item}
+              style={{
+                flexDirection: 'row',
+                alignItems: 'flex-start',
+                gap: 8,
+              }}
+            >
+              <View
+                style={{
+                  width: 4,
+                  height: 4,
+                  borderRadius: 2,
+                  backgroundColor: colors.textSecondary,
+                  marginTop: 7,
+                }}
+              />
+              <Text
+                style={{
+                  fontFamily: 'DMSans',
+                  fontSize: 12,
+                  lineHeight: 18,
+                  color: colors.textSecondary,
+                  flex: 1,
+                }}
+              >
+                {item}
+              </Text>
+            </View>
+          ))}
+        </View>
+      </View>
+    );
+  }
+
   const appleHealthIcon = (
     <Svg width={20} height={20} viewBox="0 0 24 24" fill="none">
       <Path
@@ -441,7 +645,7 @@ export default function EditHealthScreen() {
                     color: colors.textTertiary,
                   }}
                 >
-                  Last synced: Just now
+                  Last synced: {appleHealthConnected ? 'Ready to use in chat' : 'Not connected'}
                 </Text>
               </View>
             </View>
@@ -465,8 +669,38 @@ export default function EditHealthScreen() {
               marginTop: 4,
             }}
           >
-            Manually sync health data from connected devices
+            Pull current Apple Health recovery data into FitForge and the AI coach
           </Text>
+        </View>
+
+        <View
+          style={{
+            backgroundColor: colors.surface,
+            borderRadius: 12,
+            padding: 14,
+            borderWidth: 1,
+            borderColor: 'rgba(255,255,255,0.06)',
+            gap: 10,
+          }}
+        >
+          <FieldLabel text="Latest recovery metrics" />
+          <View style={{ gap: 6 }}>
+            <Text style={{ fontFamily: 'DMSans', fontSize: 13, color: colors.textSecondary }}>
+              Readiness: <Text style={{ color: colors.textPrimary }}>{readinessScore || '--'}</Text>
+            </Text>
+            <Text style={{ fontFamily: 'DMSans', fontSize: 13, color: colors.textSecondary }}>
+              HRV: <Text style={{ color: colors.textPrimary }}>{hrv || '--'}</Text>
+            </Text>
+            <Text style={{ fontFamily: 'DMSans', fontSize: 13, color: colors.textSecondary }}>
+              Resting HR: <Text style={{ color: colors.textPrimary }}>{restingHR || '--'}</Text>
+            </Text>
+            <Text style={{ fontFamily: 'DMSans', fontSize: 13, color: colors.textSecondary }}>
+              Sleep score: <Text style={{ color: colors.textPrimary }}>{sleepScore || '--'}</Text>
+            </Text>
+            <Text style={{ fontFamily: 'DMSans', fontSize: 13, color: colors.textSecondary }}>
+              Recovery score: <Text style={{ color: colors.textPrimary }}>{recoveryScore || '--'}</Text>
+            </Text>
+          </View>
         </View>
 
         {/* Apple Health Integration */}
@@ -480,6 +714,8 @@ export default function EditHealthScreen() {
           >
             Connected Services
           </Text>
+
+          <AppleHealthSetupCard />
 
           <IntegrationCard
             icon={appleHealthIcon}

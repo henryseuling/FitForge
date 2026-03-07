@@ -1,4 +1,6 @@
 import { createGoal, deleteGoal, saveCoachMemory } from './api';
+import { saveNextSessionPlan } from './api';
+import { generateOptimizedWorkoutPlan } from './workoutOptimizer';
 import { useNutritionStore } from '@/stores/useNutritionStore';
 import { useProgressStore } from '@/stores/useProgressStore';
 import { useUserStore } from '@/stores/useUserStore';
@@ -30,6 +32,11 @@ function ensureExerciseExists(exerciseId: string) {
     throw new Error('Exercise not found in the active workout');
   }
   return exercise;
+}
+
+function asStringArray(value: unknown): string[] {
+  if (!Array.isArray(value)) return [];
+  return value.map(asString).filter(Boolean);
 }
 
 export interface AIUndoAction {
@@ -240,6 +247,41 @@ export async function executeAIToolCall(tc: ToolCall): Promise<string> {
         },
         reviewRoute: '/active-workout',
       });
+    }
+
+    case 'optimize_next_workout':
+    case 'adjust_next_workout': {
+      const optimized = await generateOptimizedWorkoutPlan({
+        instruction: asString(input.instruction),
+        desiredFocus: asString(input.desiredFocus),
+        availableTime: asNumber(input.availableTime),
+        intensity: (asString(input.intensity) as 'easy' | 'moderate' | 'hard') || null,
+        preferredExercises: asStringArray(input.preferredExercises),
+        avoidExercises: asStringArray(input.avoidExercises),
+      });
+
+      await saveNextSessionPlan({
+        split_type: optimized.splitType,
+        key_lifts: optimized.keyLifts,
+        adjustments: optimized.adjustments,
+        coach_notes: optimized.coachNotes,
+      });
+
+      const workoutState = useWorkoutStore.getState();
+      if (!workoutState.workoutStartedAt) {
+        useWorkoutStore.getState().reset();
+        await useWorkoutStore.getState().hydrateUpcomingWorkout().catch(() => false);
+      }
+
+      return successResult(
+        `Built your next workout: ${optimized.workoutName} with ${optimized.keyLifts.length} exercises using the FitForge optimizer.`,
+        {
+          splitType: optimized.splitType,
+          exercises: optimized.keyLifts.map((lift) => lift.exercise),
+          algorithm: optimized.algorithm,
+        },
+        { reviewRoute: '/chat' }
+      );
     }
 
     case 'add_meal': {

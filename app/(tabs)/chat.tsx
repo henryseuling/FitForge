@@ -49,7 +49,7 @@ function QuickAction({ label, onPress }: { label: string; onPress: () => void })
   );
 }
 
-function CoachStatusCard() {
+function CoachStatusStrip() {
   const { workoutName, dayNumber, readinessScore, hrv, sleepScore, recoveryScore } = useWorkoutStore();
   const { calorieTarget, totalCalories, proteinTarget, totalProtein } = useNutritionStore();
 
@@ -71,22 +71,20 @@ function CoachStatusCard() {
     <View
       style={{
         marginHorizontal: 20,
-        marginTop: 8,
-        marginBottom: 10,
-        padding: 16,
-        borderRadius: 18,
+        marginTop: 6,
+        marginBottom: 8,
+        paddingVertical: 12,
+        paddingHorizontal: 14,
+        borderRadius: 14,
         backgroundColor: colors.surface,
         borderWidth: 1,
-        borderColor: 'rgba(232, 168, 56, 0.12)',
-        gap: 12,
+        borderColor: 'rgba(255,255,255,0.05)',
+        gap: 8,
       }}
     >
-      <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-start', gap: 12 }}>
-        <View style={{ flex: 1, gap: 4 }}>
-          <Text style={{ fontFamily: 'DMSans-Medium', fontSize: 11, color: colors.primary, textTransform: 'uppercase', letterSpacing: 0.7 }}>
-            Coach Context
-          </Text>
-          <Text style={{ fontFamily: 'DMSans-SemiBold', fontSize: 15, color: colors.textPrimary }}>
+      <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: 12 }}>
+        <View style={{ flex: 1, gap: 2 }}>
+          <Text style={{ fontFamily: 'DMSans-SemiBold', fontSize: 14, color: colors.textPrimary }}>
             {workoutLabel}
           </Text>
           <Text style={{ fontFamily: 'DMSans', fontSize: 12, color: colors.textSecondary }}>
@@ -95,24 +93,9 @@ function CoachStatusCard() {
             {sleepScore ? ` · Sleep ${sleepScore}` : ''}
           </Text>
         </View>
-        <View style={{ paddingHorizontal: 10, paddingVertical: 6, borderRadius: 10, backgroundColor: colors.primaryMuted }}>
-          <Text style={{ fontFamily: 'JetBrainsMono-Bold', fontSize: 12, color: colors.primary }}>{remainingCalories} kcal</Text>
-        </View>
-      </View>
-      <View style={{ flexDirection: 'row', gap: 8 }}>
-        <View style={{ flex: 1, padding: 10, borderRadius: 12, backgroundColor: colors.elevated }}>
-          <Text style={{ fontFamily: 'DMSans-Medium', fontSize: 10, color: colors.textTertiary, textTransform: 'uppercase', letterSpacing: 0.6 }}>
-            Protein Left
-          </Text>
-          <Text style={{ fontFamily: 'JetBrainsMono-Bold', fontSize: 16, color: colors.textPrimary, marginTop: 4 }}>{remainingProtein}g</Text>
-        </View>
-        <View style={{ flex: 1, padding: 10, borderRadius: 12, backgroundColor: colors.elevated }}>
-          <Text style={{ fontFamily: 'DMSans-Medium', fontSize: 10, color: colors.textTertiary, textTransform: 'uppercase', letterSpacing: 0.6 }}>
-            Best Use
-          </Text>
-          <Text style={{ fontFamily: 'DMSans', fontSize: 12, color: colors.textSecondary, marginTop: 4 }}>
-            Ask for today&apos;s plan, log a set, or scan a meal.
-          </Text>
+        <View style={{ alignItems: 'flex-end' }}>
+          <Text style={{ fontFamily: 'JetBrainsMono-Bold', fontSize: 14, color: colors.primary }}>{remainingCalories} kcal</Text>
+          <Text style={{ fontFamily: 'DMSans', fontSize: 11, color: colors.textTertiary }}>{remainingProtein}g protein left</Text>
         </View>
       </View>
     </View>
@@ -175,9 +158,8 @@ export default function ChatScreen() {
     { label: "What should I do today?", message: "What should I work on today? Based on my recent workouts and recovery, what's the best plan?" },
     { label: "How's my progress?", message: "How's my overall progress looking? Any areas I should focus on?" },
     { label: 'Meal ideas', message: "I need a high-protein meal idea to hit my macro targets today. What do you suggest?" },
-    { label: 'Am I overtraining?', message: "Am I overtraining? Look at my recent workout volume and recovery data." },
-    { label: 'Help me break a plateau', message: "I feel like I've hit a plateau. Can you suggest changes to help me break through?" },
   ];
+  const showStarterActions = messages.length <= 2 && !pendingUndo;
 
   const workoutStatusLabel = workoutName ? (dayNumber > 0 ? 'Workout loaded' : 'Next workout ready') : 'No workout loaded';
   const workoutContextLabel = workoutName
@@ -200,16 +182,7 @@ export default function ChatScreen() {
           </View>
         </View>
 
-        {/* Context Pill */}
-        <View style={{ alignItems: 'center', paddingVertical: 6 }}>
-          <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6, paddingVertical: 6, paddingHorizontal: 14, borderRadius: 100, backgroundColor: 'rgba(232, 168, 56, 0.08)', borderWidth: 1, borderColor: 'rgba(232, 168, 56, 0.12)' }}>
-            <Text style={{ fontFamily: 'DMSans-Medium', fontSize: 12, color: colors.primary, letterSpacing: 0.3 }}>
-              {workoutContextLabel}
-            </Text>
-          </View>
-        </View>
-
-        <CoachStatusCard />
+        <CoachStatusStrip />
 
         {pendingUndo && (
           <View
@@ -311,20 +284,19 @@ export default function ChatScreen() {
           )}
         </ScrollView>
 
-        {/* Quick Actions */}
-        <ScrollView horizontal showsHorizontalScrollIndicator={false} keyboardShouldPersistTaps="handled" style={{ maxHeight: 48 }} contentContainerStyle={{ paddingHorizontal: 20, paddingVertical: 6, gap: 8, flexDirection: 'row' }}>
-          {quickActions.map((action) => (
-            <QuickAction key={action.label} label={action.label} onPress={() => handleSend(action.message)} />
-          ))}
-        </ScrollView>
+        {showStarterActions && (
+          <ScrollView horizontal showsHorizontalScrollIndicator={false} keyboardShouldPersistTaps="handled" style={{ maxHeight: 48 }} contentContainerStyle={{ paddingHorizontal: 20, paddingVertical: 6, gap: 8, flexDirection: 'row' }}>
+            {quickActions.map((action) => (
+              <QuickAction key={action.label} label={action.label} onPress={() => handleSend(action.message)} />
+            ))}
+          </ScrollView>
+        )}
 
         {/* Input Bar */}
         <View style={{ paddingHorizontal: 20, paddingTop: 8, paddingBottom: 12, gap: 10 }}>
-          <View style={{ flexDirection: 'row', gap: 8, flexWrap: 'wrap' }}>
+          <View style={{ flexDirection: 'row', gap: 8 }}>
             <ComposerAction label="Food Photo" tone="primary" onPress={() => router.push('/camera?source=chat')} />
-            <ComposerAction label="Log Set" onPress={() => handleSend('Help me log my next set for this workout.')} />
             <ComposerAction label="Next Workout" onPress={() => handleSend("What's my next workout and why?")} />
-            <ComposerAction label="Calories Left" onPress={() => handleSend('How many calories and protein do I have left today?')} />
           </View>
           <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10 }}>
             <TextInput

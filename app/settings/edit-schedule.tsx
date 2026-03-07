@@ -17,7 +17,7 @@ export default function EditScheduleScreen() {
   const user = useUserStore();
 
   const [frequency, setFrequency] = useState(user.frequency || 4);
-  const [sessionDuration, setSessionDuration] = useState(60);
+  const [sessionDuration, setSessionDuration] = useState(user.sessionDuration || 60);
   const [equipment, setEquipment] = useState<string[]>(user.equipment || []);
 
   const EQUIPMENT_OPTIONS = [

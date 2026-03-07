@@ -176,28 +176,22 @@ function WorkoutCalendarHeatMap() {
   const { workoutHistory } = useProgressStore();
 
   const calendarData = useMemo(() => {
-    // Build a set of dates that have completed workouts
     const workoutDates = new Set(
       workoutHistory
         .filter((w) => w.completed_at)
         .map((w) => new Date(w.started_at).toISOString().split('T')[0])
     );
 
-    // Generate 28 days (4 weeks) ending today
     const today = new Date();
-    const days: { date: string; dayOfWeek: number; hasWorkout: boolean; isToday: boolean }[] = [];
+    const monthStart = new Date(today.getFullYear(), today.getMonth(), 1);
+    const monthEnd = new Date(today.getFullYear(), today.getMonth() + 1, 0);
+    const startDate = new Date(monthStart);
+    startDate.setDate(monthStart.getDate() - monthStart.getDay());
 
-    // Find the start: go back to fill a complete 4-week grid aligned to Sunday
-    const endDate = new Date(today);
-    // Go back 27 days from today for 28 total days
-    const startDate = new Date(today);
-    startDate.setDate(today.getDate() - 27);
+    const endDate = new Date(monthEnd);
+    endDate.setDate(monthEnd.getDate() + (6 - monthEnd.getDay()));
 
-    // Adjust startDate back to the nearest Sunday
-    const startDow = startDate.getDay();
-    startDate.setDate(startDate.getDate() - startDow);
-
-    // Now generate days from startDate up to and including today
+    const days: { date: string; dayOfWeek: number; hasWorkout: boolean; isToday: boolean; isCurrentMonth: boolean; dayLabel: string }[] = [];
     const current = new Date(startDate);
     while (current <= endDate) {
       const dateStr = current.toISOString().split('T')[0];
@@ -206,36 +200,24 @@ function WorkoutCalendarHeatMap() {
         dayOfWeek: current.getDay(),
         hasWorkout: workoutDates.has(dateStr),
         isToday: dateStr === today.toISOString().split('T')[0],
+        isCurrentMonth: current.getMonth() === today.getMonth(),
+        dayLabel: String(current.getDate()),
       });
       current.setDate(current.getDate() + 1);
     }
 
-    // Organize into weeks (rows)
     const weeks: typeof days[] = [];
     for (let i = 0; i < days.length; i += 7) {
       weeks.push(days.slice(i, i + 7));
     }
 
-    // Ensure the last week has 7 entries by padding
-    const lastWeek = weeks[weeks.length - 1];
-    if (lastWeek && lastWeek.length < 7) {
-      // Pad the end so the grid is complete (future days)
-      while (lastWeek.length < 7) {
-        const nextDate = new Date(endDate);
-        nextDate.setDate(endDate.getDate() + (lastWeek.length - endDate.getDay()));
-        lastWeek.push({
-          date: '',
-          dayOfWeek: lastWeek.length,
-          hasWorkout: false,
-          isToday: false,
-        });
-      }
-    }
+    const workoutCount = days.filter((d) => d.hasWorkout && d.isCurrentMonth).length;
 
-    // Count workouts in the period
-    const workoutCount = days.filter((d) => d.hasWorkout).length;
-
-    return { weeks, workoutCount, totalDays: days.length };
+    return {
+      weeks,
+      workoutCount,
+      monthLabel: today.toLocaleDateString('en-US', { month: 'long', year: 'numeric' }),
+    };
   }, [workoutHistory]);
 
   const dayLabels = ['S', 'M', 'T', 'W', 'T', 'F', 'S'];
@@ -244,7 +226,7 @@ function WorkoutCalendarHeatMap() {
     <View style={{ marginHorizontal: 20, marginTop: 12, padding: 16, borderRadius: 16, backgroundColor: colors.surface, borderWidth: 1, borderColor: 'rgba(255,255,255,0.04)', gap: 12 }}>
       <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' }}>
         <Text style={{ fontFamily: 'DMSans-SemiBold', fontSize: 14, color: colors.textPrimary }}>Activity</Text>
-        <Text style={{ fontFamily: 'DMSans', fontSize: 12, color: colors.textSecondary }}>{calendarData.workoutCount} workouts in {calendarData.totalDays}d</Text>
+        <Text style={{ fontFamily: 'DMSans', fontSize: 12, color: colors.textSecondary }}>{calendarData.workoutCount} workouts in {calendarData.monthLabel}</Text>
       </View>
 
       {/* Day of week headers */}
@@ -270,17 +252,22 @@ function WorkoutCalendarHeatMap() {
                   justifyContent: 'center',
                   backgroundColor: day.hasWorkout
                     ? 'rgba(52, 211, 153, 0.2)'
-                    : day.date ? 'rgba(255,255,255,0.03)' : 'transparent',
+                    : day.isCurrentMonth ? 'rgba(255,255,255,0.03)' : 'transparent',
                   borderWidth: day.isToday ? 1.5 : 0,
                   borderColor: day.isToday ? colors.primary : 'transparent',
                 }}
               >
-                {day.hasWorkout && (
-                  <View style={{ width: 10, height: 10, borderRadius: 5, backgroundColor: colors.success }} />
-                )}
-                {!day.hasWorkout && day.date && (
-                  <View style={{ width: 4, height: 4, borderRadius: 2, backgroundColor: 'rgba(255,255,255,0.1)' }} />
-                )}
+                <Text style={{
+                  fontFamily: day.isToday ? 'DMSans-SemiBold' : 'DMSans',
+                  fontSize: 11,
+                  color: day.hasWorkout
+                    ? colors.success
+                    : day.isCurrentMonth
+                      ? colors.textSecondary
+                      : 'rgba(255,255,255,0.18)',
+                }}>
+                  {day.dayLabel}
+                </Text>
               </View>
             </View>
           ))}
@@ -543,15 +530,16 @@ export default function ProgressScreen() {
       >
         <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', paddingHorizontal: 20, paddingTop: 16, paddingBottom: 8 }}>
           <Text style={{ fontFamily: 'DMSans-Bold', fontSize: 28, color: colors.textPrimary, letterSpacing: -0.8 }}>Progress</Text>
-          <View style={{ flexDirection: 'row', gap: 8 }}>
-            <Pressable
-              onPress={() => { Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light); router.push('/goals'); }}
-              style={{ paddingVertical: 5, paddingHorizontal: 12, borderRadius: 8, backgroundColor: colors.primaryMuted }}
-            >
-              <Text style={{ fontFamily: 'DMSans-SemiBold', fontSize: 12, color: colors.primary }}>Goals</Text>
-            </Pressable>
-            <PeriodSelector />
-          </View>
+          <Pressable
+            onPress={() => { Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light); router.push('/goals'); }}
+            style={{ paddingVertical: 8, paddingHorizontal: 14, borderRadius: 10, backgroundColor: colors.primaryMuted }}
+          >
+            <Text style={{ fontFamily: 'DMSans-SemiBold', fontSize: 12, color: colors.primary }}>Goals</Text>
+          </Pressable>
+        </View>
+
+        <View style={{ paddingHorizontal: 20, paddingBottom: 4 }}>
+          <PeriodSelector />
         </View>
 
         <MStrengthCard />

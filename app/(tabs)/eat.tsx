@@ -5,6 +5,7 @@ import Svg, { Circle, Path } from 'react-native-svg';
 import * as Haptics from 'expo-haptics';
 import { router } from 'expo-router';
 import { colors } from '@/lib/theme';
+import { fetchGoals } from '@/lib/api';
 import { useNutritionStore } from '@/stores/useNutritionStore';
 import { useUserStore } from '@/stores/useUserStore';
 import { getAIMealSuggestion } from '@/lib/workoutEngine';
@@ -196,7 +197,7 @@ function EmptyMeals() {
 
 function AIMealSuggestionCard() {
   const { remainingCalories, totalProtein, totalCarbs, totalFat, proteinTarget, carbsTarget, fatTarget } = useNutritionStore();
-  const { goals } = useUserStore();
+  const { goals: profileGoals } = useUserStore();
   const remaining = remainingCalories();
   const [suggestion, setSuggestion] = useState<{ mealName: string; description: string; calories: number; protein: number; carbs: number; fat: number } | null>(null);
   const [loading, setLoading] = useState(false);
@@ -212,13 +213,19 @@ function AIMealSuggestionCard() {
       else if (hour < 14) mealType = 'lunch';
       else if (hour < 20) mealType = 'dinner';
 
+      const liveGoals = await fetchGoals().catch(() => []);
+      const goalTitles = liveGoals
+        .map((goal) => goal?.title?.trim())
+        .filter((goal): goal is string => Boolean(goal));
+      const goalSummary = goalTitles.join(', ') || profileGoals.join(', ') || 'General Fitness';
+
       const result = await getAIMealSuggestion({
         remainingCalories: remaining,
         remainingProtein: proteinTarget - totalProtein(),
         remainingCarbs: carbsTarget - totalCarbs(),
         remainingFat: fatTarget - totalFat(),
         mealType,
-        goal: goals.join(', ') || 'General Fitness',
+        goal: goalSummary,
       });
       setSuggestion(result);
     } catch {
@@ -320,23 +327,7 @@ export default function EatScreen() {
           </Text>
         </View>
 
-        <CalorieRing />
-        <MacroProgressBars />
-        <WaterTracker />
-
-        <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', paddingHorizontal: 20, paddingTop: 24, paddingBottom: 12 }}>
-          <Text style={{ fontFamily: 'DMSans-SemiBold', fontSize: 16, color: colors.textPrimary }}>Today's Meals</Text>
-        </View>
-
-        {meals.length === 0 ? (
-          <EmptyMeals />
-        ) : (
-          meals.map((meal) => (
-            <MealCard key={meal.id} meal={meal} onDelete={() => removeMeal(meal.id)} />
-          ))
-        )}
-
-        <View style={{ flexDirection: 'row', gap: 12, marginHorizontal: 20, marginTop: 24, marginBottom: 20 }}>
+        <View style={{ flexDirection: 'row', gap: 12, marginHorizontal: 20, marginBottom: 4 }}>
           <Pressable
             onPress={() => { Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light); router.push('/camera'); }}
             accessibilityRole="button"
@@ -385,7 +376,22 @@ export default function EatScreen() {
           </Pressable>
         </View>
 
+        <CalorieRing />
+        <MacroProgressBars />
+        <WaterTracker />
         <AIMealSuggestionCard />
+
+        <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', paddingHorizontal: 20, paddingTop: 24, paddingBottom: 12 }}>
+          <Text style={{ fontFamily: 'DMSans-SemiBold', fontSize: 16, color: colors.textPrimary }}>Today's Meals</Text>
+        </View>
+
+        {meals.length === 0 ? (
+          <EmptyMeals />
+        ) : (
+          meals.map((meal) => (
+            <MealCard key={meal.id} meal={meal} onDelete={() => removeMeal(meal.id)} />
+          ))
+        )}
 
         <View style={{ height: 20 }} />
       </ScrollView>

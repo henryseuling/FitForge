@@ -279,12 +279,6 @@ export default function SettingsScreen() {
             onToggle={() => { toggleNotifications(); Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light); }}
             iconBg={colors.warningMuted}
           />
-          <SettingsRow
-            icon={exportIcon}
-            label="Export Data"
-            iconBg={colors.elevated}
-            onPress={handleExportData}
-          />
         </SettingsSection>
 
         <SettingsSection title="Data">
@@ -294,6 +288,12 @@ export default function SettingsScreen() {
             value="Strong, Hevy, CSV..."
             iconBg={colors.primaryMuted}
             onPress={() => router.push('/import-data' as any)}
+          />
+          <SettingsRow
+            icon={exportIcon}
+            label="Export Data"
+            iconBg={colors.elevated}
+            onPress={handleExportData}
           />
         </SettingsSection>
 

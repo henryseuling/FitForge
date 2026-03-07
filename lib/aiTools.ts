@@ -106,6 +106,36 @@ export const AI_TOOLS: AiTool[] = [
       required: ['notes'],
     },
   },
+  {
+    name: 'optimize_next_workout',
+    description: 'Generate a new next workout using the app’s FitForge workout optimizer when the user asks what to do next or wants a fresh session built.',
+    input_schema: {
+      type: 'object',
+      properties: {
+        instruction: { type: 'string', description: 'Natural language instruction from the user, e.g. "I have 45 minutes and want lower body".' },
+        desiredFocus: { type: 'string', description: 'Optional explicit split or muscle focus, e.g. "Pull" or "Legs".' },
+        availableTime: { type: 'number', description: 'Optional target duration in minutes.' },
+        intensity: { type: 'string', enum: ['easy', 'moderate', 'hard'], description: 'Desired session intensity.' },
+        preferredExercises: { type: 'array', items: { type: 'string' }, description: 'Exercises to prioritize.' },
+        avoidExercises: { type: 'array', items: { type: 'string' }, description: 'Exercises to avoid in the generated workout.' },
+      },
+    },
+  },
+  {
+    name: 'adjust_next_workout',
+    description: 'Revise the upcoming workout draft when the user asks to swap focus, change duration, avoid movements, or otherwise modify the next session.',
+    input_schema: {
+      type: 'object',
+      properties: {
+        instruction: { type: 'string', description: 'Natural language adjustment request.' },
+        desiredFocus: { type: 'string', description: 'Optional explicit split or muscle focus.' },
+        availableTime: { type: 'number', description: 'Optional target duration in minutes.' },
+        intensity: { type: 'string', enum: ['easy', 'moderate', 'hard'], description: 'Desired session intensity.' },
+        preferredExercises: { type: 'array', items: { type: 'string' }, description: 'Exercises to prioritize.' },
+        avoidExercises: { type: 'array', items: { type: 'string' }, description: 'Exercises to avoid.' },
+      },
+    },
+  },
 
   // ── Nutrition tools ────────────────────────────────────────────
   {

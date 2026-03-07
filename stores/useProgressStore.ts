@@ -4,6 +4,7 @@ import {
   fetchBodyMetrics,
   fetchWorkoutHistory,
   fetchWeightCheckins,
+  fetchExerciseProfiles,
   logKeyLift as apiLogKeyLift,
   logBodyMetric,
   logWeightCheckin,
@@ -131,6 +132,54 @@ function computeStrengthMetrics(keyLifts: KeyLift[]) {
   };
 }
 
+function deriveKeyLiftsFromProfiles(
+  profiles: Array<{ exercise_name?: string; estimated_1rm?: number | null; current_working_weight?: number | null }>
+): KeyLift[] {
+  return profiles
+    .filter((profile) => profile.exercise_name && (profile.estimated_1rm || profile.current_working_weight))
+    .sort((a, b) => (b.estimated_1rm || b.current_working_weight || 0) - (a.estimated_1rm || a.current_working_weight || 0))
+    .slice(0, 6)
+    .map((profile) => ({
+      name: profile.exercise_name || 'Lift',
+      weight: Math.round(profile.estimated_1rm || profile.current_working_weight || 0),
+      delta: 0,
+      unit: 'lb',
+    }));
+}
+
+function deriveKeyLiftsFromHistory(history: WorkoutHistoryEntry[]): KeyLift[] {
+  const bestByExercise = new Map<string, number>();
+
+  for (const workout of history) {
+    for (const exercise of workout.exercises || []) {
+      const exerciseName = exercise.name || exercise.exercise_name;
+      if (!exerciseName) continue;
+
+      for (const set of exercise.completed_sets || []) {
+        if (set.is_warmup) continue;
+        const weight = Number(set.weight) || 0;
+        const reps = Number(set.reps) || 0;
+        if (weight <= 0 || reps <= 0) continue;
+        const estimated1RM = Math.round(weight * (1 + reps / 30));
+        const current = bestByExercise.get(exerciseName) || 0;
+        if (estimated1RM > current) {
+          bestByExercise.set(exerciseName, estimated1RM);
+        }
+      }
+    }
+  }
+
+  return Array.from(bestByExercise.entries())
+    .sort((a, b) => b[1] - a[1])
+    .slice(0, 6)
+    .map(([name, weight]) => ({
+      name,
+      weight,
+      delta: 0,
+      unit: 'lb',
+    }));
+}
+
 function calculateStreak(history: WorkoutHistoryEntry[]): number {
   if (history.length === 0) return 0;
 
@@ -249,24 +298,35 @@ export const useProgressStore = create<ProgressState>((set, get) => ({
 
   loadProgress: async () => {
     try {
-      const [lifts, metrics, history, weightCheckins, healthHistory] = await Promise.all([
+      const [lifts, metrics, history, weightCheckins, healthHistory, exerciseProfiles] = await Promise.all([
         fetchKeyLifts().catch(() => []),
         fetchBodyMetrics(1).catch(() => []),
         fetchWorkoutHistory(50).catch(() => []),
         fetchWeightCheckins(30).catch(() => []),
         fetchHealthHistory(30).catch(() => []),
+        fetchExerciseProfiles().catch(() => []),
       ]);
 
       const updates: Record<string, any> = {};
 
-      if (lifts && lifts.length > 0) {
-        updates.keyLifts = lifts.map((l: any) => ({
-          name: l.name,
-          weight: l.weight,
-          delta: l.delta || 0,
-          unit: l.unit || 'lb',
-        }));
-        Object.assign(updates, computeStrengthMetrics(updates.keyLifts));
+      const explicitKeyLifts = (lifts || []).map((l: any) => ({
+        name: l.name,
+        weight: l.weight,
+        delta: l.delta || 0,
+        unit: l.unit || 'lb',
+      }));
+      const profileDerivedKeyLifts = deriveKeyLiftsFromProfiles(exerciseProfiles || []);
+      const historyDerivedKeyLifts = deriveKeyLiftsFromHistory(history || []);
+      const effectiveKeyLifts =
+        explicitKeyLifts.length > 0
+          ? explicitKeyLifts
+          : profileDerivedKeyLifts.length > 0
+            ? profileDerivedKeyLifts
+            : historyDerivedKeyLifts;
+
+      if (effectiveKeyLifts.length > 0) {
+        updates.keyLifts = effectiveKeyLifts;
+        Object.assign(updates, computeStrengthMetrics(effectiveKeyLifts));
       } else {
         Object.assign(updates, computeStrengthMetrics([]));
       }
