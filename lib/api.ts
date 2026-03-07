@@ -55,17 +55,90 @@ export async function fetchTodayWorkout() {
   return data;
 }
 
-export async function createWorkout(name: string, dayNumber: number) {
+interface WorkoutExerciseInput {
+  clientId?: string;
+  name: string;
+  muscleGroup: string;
+  superset?: string;
+  supersetGroup?: number | null;
+  restBetweenSupersets?: number;
+  sets: number;
+  repsMin: number;
+  repsMax: number;
+  weight: number;
+  perSide?: boolean;
+  bodyweight?: boolean;
+  estimated1RM?: number | null;
+  previousEstimated1RM?: number | null;
+  percentChange?: number | null;
+  bestSet?: string | null;
+  exerciseNotes?: string;
+}
+
+async function insertExercisesForWorkout(workoutId: string, exercises: WorkoutExerciseInput[]) {
+  const modernPayload = exercises.map((exercise, index) => ({
+    workout_id: workoutId,
+    name: exercise.name,
+    muscle_group: exercise.muscleGroup,
+    order_index: index,
+    target_sets: exercise.sets,
+    target_reps_min: exercise.repsMin,
+    target_reps_max: exercise.repsMax,
+    target_weight: exercise.weight,
+    superset_group: exercise.superset,
+  }));
+
+  const { data: modernData, error: modernError } = await supabase
+    .from('exercises')
+    .insert(modernPayload)
+    .select('*');
+
+  if (!modernError) {
+    return modernData ?? [];
+  }
+
+  const legacyPayload = exercises.map((exercise, index) => ({
+    workout_id: workoutId,
+    name: exercise.name,
+    muscle_group: exercise.muscleGroup,
+    order_index: index,
+    sets: exercise.sets,
+    reps_min: exercise.repsMin,
+    reps_max: exercise.repsMax,
+    superset: exercise.superset ?? 'A',
+  }));
+
+  const { data: legacyData, error: legacyError } = await supabase
+    .from('exercises')
+    .insert(legacyPayload)
+    .select('*');
+
+  if (legacyError) throw legacyError;
+  return legacyData ?? [];
+}
+
+export async function createWorkout(
+  name: string,
+  dayNumber: number,
+  exercises: WorkoutExerciseInput[] = []
+) {
   const { data: { user } } = await supabase.auth.getUser();
   if (!user) throw new Error('Not authenticated');
 
-  const { data, error } = await supabase
+  const { data: workout, error } = await supabase
     .from('workouts')
     .insert({ user_id: user.id, name, day_number: dayNumber })
     .select()
     .single();
   if (error) throw error;
-  return data;
+
+  if (exercises.length === 0) {
+    return { ...workout, exercises: [] };
+  }
+
+  const persistedExercises = await insertExercisesForWorkout(workout.id, exercises);
+
+  return { ...workout, exercises: persistedExercises ?? [] };
 }
 
 export async function logSet(
@@ -90,7 +163,18 @@ export async function logSet(
       is_bodyweight: extras?.bodyweight || false,
       note: extras?.note || null,
     });
-  if (error) throw error;
+  if (!error) return;
+
+  const { error: legacyError } = await supabase
+    .from('completed_sets')
+    .insert({
+      exercise_id: exerciseId,
+      set_number: setNumber,
+      weight,
+      reps,
+      rpe: rpe ?? null,
+    });
+  if (legacyError) throw legacyError;
 }
 
 export async function completeWorkout(
@@ -306,6 +390,51 @@ export async function saveChatMessage(role: 'user' | 'assistant', content: strin
     .from('chat_messages')
     .insert({ user_id: user.id, role, content });
   if (error) throw error;
+}
+
+// ============================================
+// COACH MEMORY
+// ============================================
+
+export async function fetchCoachMemories(limit = 10) {
+  const { data: { user } } = await supabase.auth.getUser();
+  if (!user) throw new Error('Not authenticated');
+
+  const { data, error } = await supabase
+    .from('coach_memories')
+    .select('*')
+    .eq('user_id', user.id)
+    .order('pinned', { ascending: false })
+    .order('updated_at', { ascending: false })
+    .limit(limit);
+  if (error) throw error;
+  return data ?? [];
+}
+
+export async function saveCoachMemory(memory: {
+  category: string;
+  content: string;
+  source?: string;
+  pinned?: boolean;
+  metadata?: Record<string, unknown> | null;
+}) {
+  const { data: { user } } = await supabase.auth.getUser();
+  if (!user) throw new Error('Not authenticated');
+
+  const { data, error } = await supabase
+    .from('coach_memories')
+    .insert({
+      user_id: user.id,
+      category: memory.category,
+      content: memory.content,
+      source: memory.source || 'chat',
+      pinned: memory.pinned || false,
+      metadata: memory.metadata || null,
+    })
+    .select()
+    .single();
+  if (error) throw error;
+  return data;
 }
 
 // ============================================

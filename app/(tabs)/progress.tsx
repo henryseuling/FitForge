@@ -6,6 +6,7 @@ import * as Haptics from 'expo-haptics';
 import { router } from 'expo-router';
 import { colors } from '@/lib/theme';
 import { useProgressStore } from '@/stores/useProgressStore';
+import { useUserStore } from '@/stores/useUserStore';
 import { fetchExerciseProfiles, fetch1RMHistory } from '@/lib/api';
 
 function PeriodSelector() {
@@ -123,9 +124,10 @@ function KeyLiftsGrid() {
 
 function BodyMetrics() {
   const { weight, sleepAvg, hrvAvg, streak } = useProgressStore();
+  const units = useUserStore((s) => s.units);
   const metrics = [
-    { label: 'Weight', value: weight.toString(), unit: 'lb', color: colors.textPrimary },
-    { label: 'Sleep', value: sleepAvg.toString(), unit: 'hrs avg', color: colors.textPrimary },
+    { label: 'Weight', value: weight.toString(), unit: units === 'imperial' ? 'lb' : 'kg', color: colors.textPrimary },
+    { label: 'Sleep', value: sleepAvg.toString(), unit: 'score avg', color: colors.textPrimary },
     { label: 'HRV', value: hrvAvg.toString(), unit: 'ms avg', color: colors.success },
     { label: 'Streak', value: streak.toString(), unit: 'days', color: colors.primary },
   ];
@@ -290,6 +292,7 @@ function WorkoutCalendarHeatMap() {
 
 function WeightChart() {
   const { weightHistory } = useProgressStore();
+  const units = useUserStore((s) => s.units);
 
   const chartData = useMemo(() => {
     // Take last 8 data points, reversed to chronological order
@@ -347,7 +350,7 @@ function WeightChart() {
         </View>
         <View style={{ alignItems: 'flex-end' }}>
           <Text style={{ fontFamily: 'JetBrainsMono-Bold', fontSize: 22, color: colors.textPrimary }}>{chartData.latest.toFixed(1)}</Text>
-          <Text style={{ fontFamily: 'DMSans', fontSize: 11, color: colors.textTertiary }}>kg latest</Text>
+          <Text style={{ fontFamily: 'DMSans', fontSize: 11, color: colors.textTertiary }}>{units === 'imperial' ? 'lb latest' : 'kg latest'}</Text>
         </View>
       </View>
 
@@ -372,8 +375,8 @@ function WeightChart() {
 
       {/* Range indicator */}
       <View style={{ flexDirection: 'row', justifyContent: 'space-between' }}>
-        <Text style={{ fontFamily: 'DMSans', fontSize: 10, color: colors.textTertiary }}>Low: {chartData.minWeight.toFixed(1)} kg</Text>
-        <Text style={{ fontFamily: 'DMSans', fontSize: 10, color: colors.textTertiary }}>High: {chartData.maxWeight.toFixed(1)} kg</Text>
+        <Text style={{ fontFamily: 'DMSans', fontSize: 10, color: colors.textTertiary }}>Low: {chartData.minWeight.toFixed(1)} {units === 'imperial' ? 'lb' : 'kg'}</Text>
+        <Text style={{ fontFamily: 'DMSans', fontSize: 10, color: colors.textTertiary }}>High: {chartData.maxWeight.toFixed(1)} {units === 'imperial' ? 'lb' : 'kg'}</Text>
       </View>
     </View>
   );

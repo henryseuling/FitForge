@@ -64,9 +64,16 @@ export default function CameraScreen() {
     const { addMeal } = useNutritionStore.getState();
     addMeal({
       id: Date.now().toString(),
+      name: result.name,
       type: result.mealType,
       time: new Date().toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' }),
-      foods: result.foods.map((f) => ({ name: f.name, calories: f.calories })),
+      foods: result.foods.map((f) => ({
+        name: f.name,
+        calories: f.calories,
+        protein: f.protein,
+        carbs: f.carbs,
+        fat: f.fat,
+      })),
       totalCalories: result.totalCalories,
       protein: result.totalProtein,
       carbs: result.totalCarbs,

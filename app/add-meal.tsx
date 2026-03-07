@@ -82,9 +82,16 @@ export default function AddMealScreen() {
 
     useNutritionStore.getState().addMeal({
       id: Date.now().toString(),
+      name: validFoods.map((food) => food.name.trim()).join(', '),
       type: mealType.toLowerCase() as any,
       time: new Date().toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' }),
-      foods: validFoods.map((f) => ({ name: f.name.trim(), calories: parseNum(f.calories) })),
+      foods: validFoods.map((f) => ({
+        name: f.name.trim(),
+        calories: parseNum(f.calories),
+        protein: parseNum(f.protein),
+        carbs: parseNum(f.carbs),
+        fat: parseNum(f.fat),
+      })),
       totalCalories: totalCals,
       protein: totalProtein,
       carbs: totalCarbs,

@@ -203,12 +203,6 @@ export default function OnboardingScreen() {
       fatTarget,
     });
 
-    // Mark onboarding as completed in Supabase
-    try {
-      const { updateProfile: apiUpdateProfile } = require('@/lib/api');
-      await apiUpdateProfile({ onboarding_completed: true });
-    } catch {}
-
     useAuthStore.getState().setOnboarded(true);
     router.replace('/(tabs)');
   };

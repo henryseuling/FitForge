@@ -6,7 +6,10 @@ import {
   fetchWeightCheckins,
   logKeyLift as apiLogKeyLift,
   logBodyMetric,
+  logWeightCheckin,
+  fetchHealthHistory,
 } from '@/lib/api';
+import { useUserStore } from './useUserStore';
 
 export interface KeyLift {
   name: string;
@@ -68,6 +71,64 @@ interface ProgressState {
   logBodyWeight: (weight: number) => void;
   loadProgress: () => Promise<void>;
   reset: () => void;
+}
+
+function getPeriodStart(period: 'week' | 'month' | 'all'): Date | null {
+  if (period === 'all') return null;
+  const start = new Date();
+  if (period === 'week') {
+    start.setDate(start.getDate() - 6);
+  } else {
+    start.setDate(start.getDate() - 29);
+  }
+  start.setHours(0, 0, 0, 0);
+  return start;
+}
+
+function filterHistoryByPeriod(history: WorkoutHistoryEntry[], period: 'week' | 'month' | 'all') {
+  const start = getPeriodStart(period);
+  if (!start) return history;
+  return history.filter((entry) => new Date(entry.started_at) >= start);
+}
+
+function buildVolumeData(history: WorkoutHistoryEntry[], period: 'week' | 'month' | 'all'): VolumeData[] {
+  const filtered = filterHistoryByPeriod(history, period);
+  const byMuscle = new Map<string, number>();
+
+  for (const workout of filtered) {
+    for (const exercise of workout.exercises || []) {
+      const muscle = exercise.muscle_group || exercise.muscleGroup || 'Other';
+      const completedSets = (exercise.completed_sets || []).filter((set: any) => !set.is_warmup);
+      const setCount = completedSets.length;
+      if (setCount === 0) continue;
+      byMuscle.set(muscle, (byMuscle.get(muscle) || 0) + setCount);
+    }
+  }
+
+  const maxSets = Math.max(...Array.from(byMuscle.values()), 1);
+  return Array.from(byMuscle.entries())
+    .map(([muscle, sets]) => ({ muscle, sets, maxSets }))
+    .sort((a, b) => b.sets - a.sets)
+    .slice(0, 6);
+}
+
+function computeStrengthMetrics(keyLifts: KeyLift[]) {
+  const score = Math.round(keyLifts.reduce((sum, lift) => sum + lift.weight, 0));
+  const delta = Math.round(keyLifts.reduce((sum, lift) => sum + lift.delta, 0));
+  const tiers = [
+    { label: 'Base', max: 405 },
+    { label: 'Build', max: 675 },
+    { label: 'Forge', max: 945 },
+    { label: 'Elite', max: 1260 },
+  ];
+  const tier = tiers.find((entry) => score < entry.max) || tiers[tiers.length - 1];
+
+  return {
+    mStrengthScore: score,
+    mStrengthDelta: delta,
+    mStrengthTier: tier.label,
+    mStrengthNextTier: tier.max,
+  };
 }
 
 function calculateStreak(history: WorkoutHistoryEntry[]): number {
@@ -153,11 +214,11 @@ const INITIAL_STATE = {
 export const useProgressStore = create<ProgressState>((set, get) => ({
   ...INITIAL_STATE,
 
-  setPeriod: (period) => {
-    set({ period });
-    // Re-load progress data with new period
-    get().loadProgress();
-  },
+  setPeriod: (period) =>
+    set((state) => ({
+      period,
+      volumeData: buildVolumeData(state.workoutHistory, period),
+    })),
 
   updateKeyLift: ({ name, weight }) => {
     set((state) => {
@@ -180,21 +241,20 @@ export const useProgressStore = create<ProgressState>((set, get) => ({
 
   logBodyWeight: (weight) => {
     set({ weight });
-    // Persist to Supabase
     logBodyMetric(weight).catch((err) => console.warn('Failed to persist body metric:', err));
+    const units = useUserStore.getState().units;
+    const weightKg = units === 'imperial' ? Math.round((weight * 0.45359237) * 10) / 10 : weight;
+    logWeightCheckin(weightKg).catch((err) => console.warn('Failed to persist weight checkin:', err));
   },
 
   loadProgress: async () => {
     try {
-      const { period } = get();
-      const historyLimit = period === 'week' ? 14 : period === 'month' ? 60 : 200;
-      const weightLimit = period === 'week' ? 7 : period === 'month' ? 30 : 90;
-
-      const [lifts, metrics, history, weightCheckins] = await Promise.all([
+      const [lifts, metrics, history, weightCheckins, healthHistory] = await Promise.all([
         fetchKeyLifts().catch(() => []),
         fetchBodyMetrics(1).catch(() => []),
-        fetchWorkoutHistory(historyLimit).catch(() => []),
-        fetchWeightCheckins(weightLimit).catch(() => []),
+        fetchWorkoutHistory(50).catch(() => []),
+        fetchWeightCheckins(30).catch(() => []),
+        fetchHealthHistory(30).catch(() => []),
       ]);
 
       const updates: Record<string, any> = {};
@@ -206,6 +266,9 @@ export const useProgressStore = create<ProgressState>((set, get) => ({
           delta: l.delta || 0,
           unit: l.unit || 'lb',
         }));
+        Object.assign(updates, computeStrengthMetrics(updates.keyLifts));
+      } else {
+        Object.assign(updates, computeStrengthMetrics([]));
       }
 
       if (metrics && metrics.length > 0) {
@@ -216,14 +279,25 @@ export const useProgressStore = create<ProgressState>((set, get) => ({
         updates.workoutHistory = history;
         updates.streak = calculateStreak(history);
         updates.personalRecords = extractPersonalRecords(history);
+        updates.volumeData = buildVolumeData(history, get().period);
       }
 
       if (weightCheckins) {
+        const units = useUserStore.getState().units;
         updates.weightHistory = weightCheckins.map((c: any) => ({
           id: c.id,
-          weight_kg: c.weight_kg,
+          weight_kg: units === 'imperial'
+            ? Math.round((c.weight_kg * 2.20462262) * 10) / 10
+            : c.weight_kg,
           logged_at: c.logged_at,
         }));
+      }
+
+      if (healthHistory && healthHistory.length > 0) {
+        const totalSleep = healthHistory.reduce((sum: number, entry: any) => sum + (entry.sleep_score || 0), 0);
+        const totalHRV = healthHistory.reduce((sum: number, entry: any) => sum + (entry.hrv || 0), 0);
+        updates.sleepAvg = Math.round(totalSleep / healthHistory.length);
+        updates.hrvAvg = Math.round(totalHRV / healthHistory.length);
       }
 
       if (Object.keys(updates).length > 0) {

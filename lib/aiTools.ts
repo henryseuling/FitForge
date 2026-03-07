@@ -77,6 +77,35 @@ export const AI_TOOLS: AiTool[] = [
     description: 'Mark the workout as started (begins the duration timer).',
     input_schema: { type: 'object', properties: {} },
   },
+  {
+    name: 'replace_exercise',
+    description: 'Replace an exercise in the current workout when the user wants a swap.',
+    input_schema: {
+      type: 'object',
+      properties: {
+        exerciseId: { type: 'string', description: 'ID of the exercise being replaced' },
+        replacementName: { type: 'string', description: 'Name of the replacement exercise' },
+        muscleGroup: { type: 'string', description: 'Primary muscle group for the replacement' },
+        sets: { type: 'number', description: 'Target number of sets' },
+        repsMin: { type: 'number', description: 'Minimum reps' },
+        repsMax: { type: 'number', description: 'Maximum reps' },
+        weight: { type: 'number', description: 'Suggested working weight in lbs' },
+        note: { type: 'string', description: 'Why the replacement was made' },
+      },
+      required: ['exerciseId', 'replacementName'],
+    },
+  },
+  {
+    name: 'set_session_notes',
+    description: 'Save a short coaching note or session note for the active workout.',
+    input_schema: {
+      type: 'object',
+      properties: {
+        notes: { type: 'string', description: 'Workout/session notes to save' },
+      },
+      required: ['notes'],
+    },
+  },
 
   // ── Nutrition tools ────────────────────────────────────────────
   {
@@ -85,6 +114,7 @@ export const AI_TOOLS: AiTool[] = [
     input_schema: {
       type: 'object',
       properties: {
+        name: { type: 'string', description: 'Meal name, e.g. "Chicken burrito bowl"' },
         type: { type: 'string', enum: ['breakfast', 'lunch', 'dinner', 'snack'], description: 'Meal type' },
         time: { type: 'string', description: 'Time the meal was eaten, e.g. "2:30 PM"' },
         foods: {
@@ -94,6 +124,9 @@ export const AI_TOOLS: AiTool[] = [
             properties: {
               name: { type: 'string' },
               calories: { type: 'number' },
+              protein: { type: 'number' },
+              carbs: { type: 'number' },
+              fat: { type: 'number' },
             },
             required: ['name', 'calories'],
           },
@@ -118,6 +151,17 @@ export const AI_TOOLS: AiTool[] = [
         carbsTarget: { type: 'number', description: 'Daily carbs target in grams' },
         fatTarget: { type: 'number', description: 'Daily fat target in grams' },
       },
+    },
+  },
+  {
+    name: 'log_water',
+    description: 'Log or update today\'s water intake in glasses.',
+    input_schema: {
+      type: 'object',
+      properties: {
+        glasses: { type: 'number', description: 'Total glasses of water consumed today' },
+      },
+      required: ['glasses'],
     },
   },
 
@@ -167,5 +211,35 @@ export const AI_TOOLS: AiTool[] = [
     name: 'toggle_progressive_overload',
     description: 'Toggle the progressive overload setting on or off.',
     input_schema: { type: 'object', properties: {} },
+  },
+  {
+    name: 'create_goal',
+    description: 'Create a structured goal for the user, like a bodyweight or strength target.',
+    input_schema: {
+      type: 'object',
+      properties: {
+        type: { type: 'string', description: 'Goal type, e.g. strength, weight, nutrition' },
+        title: { type: 'string', description: 'Goal title' },
+        targetValue: { type: 'number', description: 'Target value' },
+        currentValue: { type: 'number', description: 'Current value' },
+        unit: { type: 'string', description: 'Unit, e.g. lb, kcal, workouts/week' },
+        deadline: { type: 'string', description: 'Optional ISO date deadline' },
+      },
+      required: ['title', 'targetValue', 'unit'],
+    },
+  },
+  {
+    name: 'remember_preference',
+    description: 'Save a durable user preference or coaching constraint so future responses stay personalized.',
+    input_schema: {
+      type: 'object',
+      properties: {
+        category: { type: 'string', description: 'Category like nutrition, injury, preference, schedule' },
+        content: { type: 'string', description: 'The durable preference or constraint to remember' },
+        pinned: { type: 'boolean', description: 'Whether this memory should be prioritized' },
+        metadata: { type: 'object', description: 'Optional structured metadata' },
+      },
+      required: ['content'],
+    },
   },
 ];

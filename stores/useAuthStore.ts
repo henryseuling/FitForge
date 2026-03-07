@@ -47,10 +47,10 @@ export const useAuthStore = create<AuthState>((set, get) => ({
         try {
           const { data: profile } = await supabase
             .from('profiles')
-            .select('level, onboarding_completed')
+            .select('level')
             .eq('id', session.user.id)
             .single();
-          onboarded = !!(profile?.onboarding_completed || profile?.level);
+          onboarded = !!profile?.level;
         } catch {
           // Profile may not exist yet
         }
@@ -123,10 +123,10 @@ export const useAuthStore = create<AuthState>((set, get) => ({
       try {
         const { data: profile } = await supabase
           .from('profiles')
-          .select('level, onboarding_completed')
+          .select('level')
           .eq('id', data.user.id)
           .single();
-        onboarded = !!(profile?.onboarding_completed || profile?.level);
+        onboarded = !!profile?.level;
       } catch {
         // Profile check failed — will route to onboarding
       }
@@ -151,7 +151,12 @@ export const useAuthStore = create<AuthState>((set, get) => ({
     try {
       // Call Supabase Edge Function or RPC to delete the user's data and auth account
       const { error } = await supabase.rpc('delete_user_account');
-      if (error) return { error: error.message };
+      if (error) {
+        if (error.message?.includes("Could not find the function public.delete_user_account")) {
+          return { error: 'Account deletion is not enabled on this backend yet. The Supabase delete_user_account RPC still needs to be deployed.' };
+        }
+        return { error: error.message };
+      }
       resetAllStores();
       set({ session: null, user: null, isOnboarded: false });
       return { error: null };

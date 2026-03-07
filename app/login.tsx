@@ -17,19 +17,30 @@ export default function LoginScreen() {
 
   const handleSubmit = async () => {
     setError('');
-    if (!email || !password) {
+    const normalizedEmail = email.trim().toLowerCase();
+    const normalizedName = name.trim();
+
+    if (!normalizedEmail || !password) {
       setError('Email and password are required');
       return;
     }
-    if (isSignUp && !name) {
+    if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(normalizedEmail)) {
+      setError('Enter a valid email address');
+      return;
+    }
+    if (isSignUp && !normalizedName) {
       setError('Name is required');
+      return;
+    }
+    if (isSignUp && password.length < 8) {
+      setError('Password must be at least 8 characters');
       return;
     }
 
     setLoading(true);
     const result = isSignUp
-      ? await signUp(email, password, name)
-      : await signIn(email, password);
+      ? await signUp(normalizedEmail, password, normalizedName)
+      : await signIn(normalizedEmail, password);
 
     setLoading(false);
 

@@ -3,14 +3,9 @@
 // exercise swaps, and AI meal suggestions.
 
 import { getExercisesByEquipment } from '@/constants/exercises';
+import { invokeCompletionAI } from './aiGateway';
+import { extractJsonPayload } from './json';
 import type { Exercise, MuscleGroup, EquipmentType } from '@/constants/exercises';
-// ── Constants ────────────────────────────────────────────────────
-
-const CLAUDE_API_URL = 'https://api.anthropic.com/v1/messages';
-// TODO: Move to a Supabase Edge Function in production
-const API_KEY = process.env.EXPO_PUBLIC_CLAUDE_API_KEY || '';
-const MODEL = 'claude-sonnet-4-20250514';
-// NOTE: max_tokens increased from 1024 to 2048 across all Claude calls
 
 // ── Types ────────────────────────────────────────────────────────
 
@@ -86,97 +81,12 @@ async function callClaude(
   userMessage: string,
   maxTokens: number = 4096
 ): Promise<string> {
-  const response = await fetch(CLAUDE_API_URL, {
-    method: 'POST',
-    headers: {
-      'Content-Type': 'application/json',
-      'x-api-key': API_KEY,
-      'anthropic-version': '2023-06-01',
-    },
-    body: JSON.stringify({
-      model: MODEL,
-      max_tokens: maxTokens,
-      system: systemPrompt,
-      messages: [{ role: 'user', content: userMessage }],
-    }),
+  const { text } = await invokeCompletionAI({
+    systemPrompt,
+    userMessage,
+    maxTokens,
   });
-
-  if (!response.ok) {
-    const errorBody = await response.text().catch(() => '');
-    throw new Error(`Claude API error ${response.status}: ${errorBody}`);
-  }
-
-  const data = await response.json();
-  let text = '';
-  for (const block of data.content || []) {
-    if (block.type === 'text') {
-      text += block.text;
-    }
-  }
   return text;
-}
-
-/**
- * Extract JSON from a response that may contain markdown fences or surrounding text.
- * Tries multiple strategies to find valid JSON.
- */
-function extractJSON<T>(text: string): T {
-  // Strategy 1: Try the entire text as JSON
-  try {
-    return JSON.parse(text) as T;
-  } catch {
-    // Continue to next strategy
-  }
-
-  // Strategy 2: Extract from markdown code fences
-  const fenceMatch = text.match(/```(?:json)?\s*\n?([\s\S]*?)\n?```/);
-  if (fenceMatch) {
-    try {
-      return JSON.parse(fenceMatch[1].trim()) as T;
-    } catch {
-      // Continue
-    }
-  }
-
-  // Strategy 3: Find the first { ... } or [ ... ] block
-  const jsonStart = text.search(/[\[{]/);
-  if (jsonStart !== -1) {
-    const startChar = text[jsonStart];
-    const endChar = startChar === '{' ? '}' : ']';
-    let depth = 0;
-    let inString = false;
-    let escape = false;
-
-    for (let i = jsonStart; i < text.length; i++) {
-      const ch = text[i];
-      if (escape) {
-        escape = false;
-        continue;
-      }
-      if (ch === '\\' && inString) {
-        escape = true;
-        continue;
-      }
-      if (ch === '"') {
-        inString = !inString;
-        continue;
-      }
-      if (inString) continue;
-
-      if (ch === startChar) depth++;
-      if (ch === endChar) depth--;
-
-      if (depth === 0) {
-        try {
-          return JSON.parse(text.slice(jsonStart, i + 1)) as T;
-        } catch {
-          break;
-        }
-      }
-    }
-  }
-
-  throw new Error('Failed to extract JSON from response');
 }
 
 /**
@@ -345,7 +255,7 @@ ${exerciseDB}
 Generate the complete weekly plan now. Remember: exactly ${userProfile.workoutFrequency} workout days and ${7 - userProfile.workoutFrequency} rest days. Use the exercise profiles to set accurate suggested weights.`;
 
     const responseText = await callClaude(WORKOUT_GENERATION_SYSTEM_PROMPT, userMessage, 4096);
-    const plan = extractJSON<WorkoutPlan>(responseText);
+    const plan = extractJsonPayload<WorkoutPlan>(responseText);
 
     // Validate the plan has the required structure
     if (!plan.weeklySchedule || !plan.periodizationPhase) {
@@ -405,7 +315,7 @@ Sets remaining: ${setsRemaining}
 What adjustments should I make for the remaining sets?`;
 
     const responseText = await callClaude(MID_WORKOUT_SYSTEM_PROMPT, userMessage, 512);
-    const result = extractJSON<{ adjustedWeight?: number; adjustedReps?: string; note: string }>(responseText);
+    const result = extractJsonPayload<{ adjustedWeight?: number; adjustedReps?: string; note: string }>(responseText);
     return {
       adjustedWeight: result.adjustedWeight ?? undefined,
       adjustedReps: result.adjustedReps ?? undefined,
@@ -489,7 +399,7 @@ ${exerciseSummary}
 Analyze this workout session.`;
 
     const responseText = await callClaude(POST_WORKOUT_SYSTEM_PROMPT, userMessage, 1024);
-    const result = extractJSON<{
+    const result = extractJsonPayload<{
       summary: string;
       personalRecords: string[];
       recoveryTips: string;
@@ -549,7 +459,7 @@ ${exerciseDB}
 Suggest 3 alternatives.`;
 
     const responseText = await callClaude(EXERCISE_SWAP_SYSTEM_PROMPT, userMessage, 1024);
-    const suggestions = extractJSON<Array<{ exerciseId: string; exerciseName: string; reason: string }>>(responseText);
+    const suggestions = extractJsonPayload<Array<{ exerciseId: string; exerciseName: string; reason: string }>>(responseText);
 
     if (!Array.isArray(suggestions) || suggestions.length === 0) {
       throw new Error('Invalid swap suggestions format');
@@ -634,7 +544,7 @@ User's fitness goal: ${goal}
 The meal should use roughly ${Math.round(remainingCalories * 0.4)}-${remainingCalories} calories depending on what makes sense for this meal type.`;
 
     const responseText = await callClaude(MEAL_SUGGESTION_SYSTEM_PROMPT, userMessage, 512);
-    const result = extractJSON<{
+    const result = extractJsonPayload<{
       mealName: string;
       description: string;
       calories: number;
@@ -744,7 +654,7 @@ ${params.previousObservations?.length ? `Recent observations:\n${params.previous
 Generate categorized observations.`;
 
     const responseText = await callClaude(OBSERVATION_SYSTEM_PROMPT, userMessage, 1024);
-    const observations = extractJSON<Array<{ category: string; observation: string }>>(responseText);
+    const observations = extractJsonPayload<Array<{ category: string; observation: string }>>(responseText);
     if (!Array.isArray(observations)) throw new Error('Invalid observations format');
     return observations;
   } catch (error) {
@@ -805,7 +715,7 @@ ${params.recentObservations.slice(0, 5).map((o) => `- [${o.category}] ${o.observ
 What should the next session focus on?`;
 
     const responseText = await callClaude(NEXT_SESSION_SYSTEM_PROMPT, userMessage, 1024);
-    const plan = extractJSON<{ splitType: string; keyLifts: any[]; adjustments: string[]; coachNotes: string }>(responseText);
+    const plan = extractJsonPayload<{ splitType: string; keyLifts: any[]; adjustments: string[]; coachNotes: string }>(responseText);
     return {
       splitType: plan.splitType || '',
       keyLifts: plan.keyLifts || [],
@@ -862,7 +772,7 @@ ${dataSummary}
 Generate exercise profiles with working weights and 1RM estimates.`;
 
     const responseText = await callClaude(IMPORT_CALIBRATION_SYSTEM_PROMPT, userMessage, 2048);
-    const profiles = extractJSON<Array<{
+    const profiles = extractJsonPayload<Array<{
       exercise_id: string;
       exercise_name: string;
       current_working_weight: number;

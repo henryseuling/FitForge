@@ -155,7 +155,7 @@ export const useUserStore = create<UserState>((set) => ({
         notifications: profile.notifications ?? true,
       });
       // If profile has onboarding data, ensure auth store reflects it
-      if (profile.onboarding_completed || profile.level) {
+      if (profile.level) {
         const { useAuthStore } = require('./useAuthStore');
         useAuthStore.getState().setOnboarded(true);
       }

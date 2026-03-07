@@ -63,7 +63,7 @@ export default function ChatScreen() {
 
   const handleSend = async (text?: string) => {
     const messageText = text || inputText.trim();
-    if (!messageText) return;
+    if (!messageText || isLoading) return;
     setInputText('');
     await sendUserMessage(messageText);
   };
@@ -146,6 +146,7 @@ export default function ChatScreen() {
             returnKeyType="send"
             accessibilityLabel="Chat message input"
             accessibilityHint="Type a message to your AI coach"
+            editable={!isLoading}
             style={{
               flex: 1, paddingVertical: 10, paddingHorizontal: 16,
               borderRadius: 24, backgroundColor: colors.surface,
@@ -153,12 +154,12 @@ export default function ChatScreen() {
               fontFamily: 'DMSans', fontSize: 14, color: colors.textPrimary,
             }}
           />
-          <Pressable onPress={() => handleSend()} accessibilityRole="button" accessibilityLabel="Send message" accessibilityState={{ disabled: !inputText.trim() }} style={{
+          <Pressable disabled={isLoading} onPress={() => handleSend()} accessibilityRole="button" accessibilityLabel="Send message" accessibilityState={{ disabled: !inputText.trim() || isLoading }} style={{
             width: 40, height: 40, borderRadius: 20,
             alignItems: 'center', justifyContent: 'center',
-            backgroundColor: inputText.trim() ? colors.primary : colors.elevated,
+            backgroundColor: inputText.trim() && !isLoading ? colors.primary : colors.elevated,
           }}>
-            <Text style={{ fontFamily: 'DMSans-Bold', fontSize: 16, color: inputText.trim() ? colors.bg : colors.textTertiary }}>↑</Text>
+            <Text style={{ fontFamily: 'DMSans-Bold', fontSize: 16, color: inputText.trim() && !isLoading ? colors.bg : colors.textTertiary }}>↑</Text>
           </Pressable>
         </View>
       </KeyboardAvoidingView>

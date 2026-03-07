@@ -95,7 +95,7 @@ interface WorkoutState {
   decrementRestTimer: () => void;
   setActiveExercise: (index: number) => void;
   updateReadiness: (data: { score: number; hrv: number; restingHR: number; sleepScore: number; recoveryScore: number }) => void;
-  startWorkout: () => void;
+  startWorkout: () => Promise<void>;
   loadWorkout: () => Promise<void>;
   reset: () => void;
 
@@ -221,11 +221,59 @@ export const useWorkoutStore = create<WorkoutState>((set, get) => ({
       recoveryScore: data.recoveryScore,
     }),
 
-  startWorkout: () => {
-    set({ workoutStartedAt: Date.now() });
+  startWorkout: async () => {
+    const startedAt = Date.now();
+    set({ workoutStartedAt: startedAt, workoutId: null });
     const state = get();
     if (state.workoutName) {
-      createWorkout(state.workoutName, state.dayNumber).catch((err) => console.warn('Failed to create workout:', err));
+      try {
+        const persistedWorkout = await createWorkout(
+          state.workoutName,
+          state.dayNumber,
+          state.exercises.map((exercise) => ({
+            clientId: exercise.id,
+            name: exercise.name,
+            muscleGroup: exercise.muscleGroup,
+            superset: exercise.superset,
+            supersetGroup: exercise.supersetGroup,
+            restBetweenSupersets: exercise.restBetweenSupersets,
+            sets: exercise.sets,
+            repsMin: exercise.repsMin,
+            repsMax: exercise.repsMax,
+            weight: exercise.weight,
+            perSide: exercise.perSide,
+            bodyweight: exercise.bodyweight,
+            estimated1RM: exercise.estimated1RM,
+            previousEstimated1RM: exercise.previousEstimated1RM,
+            percentChange: exercise.percentChange,
+            bestSet: exercise.bestSet,
+            exerciseNotes: exercise.exerciseNotes,
+          }))
+        );
+
+        const persistedExercises = [...(persistedWorkout.exercises || [])].sort(
+          (a, b) => (a.order_index ?? 0) - (b.order_index ?? 0)
+        );
+
+        set((current) => {
+          if (current.workoutStartedAt !== startedAt) {
+            return current;
+          }
+
+          return {
+            workoutId: persistedWorkout.id,
+            exercises: current.exercises.map((exercise, index) => ({
+              ...exercise,
+              id:
+                persistedExercises[index]?.id ??
+                persistedExercises.find((item) => item.exercise_id === exercise.id)?.id ??
+                exercise.id,
+            })),
+          };
+        });
+      } catch {
+        // Keep the local workout active even if persistence fails.
+      }
     }
   },
 
@@ -246,12 +294,12 @@ export const useWorkoutStore = create<WorkoutState>((set, get) => ({
             id: ex.id,
             name: ex.name || '',
             muscleGroup: ex.muscle_group || '',
-            superset: ex.superset_group || undefined,
+            superset: ex.superset_group || ex.superset || undefined,
             supersetGroup: ex.superset_group_num ?? null,
             restBetweenSupersets: ex.rest_between_supersets || 60,
-            sets: ex.target_sets || 0,
-            repsMin: ex.target_reps_min || 0,
-            repsMax: ex.target_reps_max || 0,
+            sets: ex.target_sets || ex.sets || 0,
+            repsMin: ex.target_reps_min || ex.reps_min || 0,
+            repsMax: ex.target_reps_max || ex.reps_max || 0,
             weight: ex.target_weight || 0,
             perSide: ex.per_side || false,
             bodyweight: ex.is_bodyweight || false,

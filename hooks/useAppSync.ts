@@ -6,6 +6,7 @@ import { useNutritionStore } from '@/stores/useNutritionStore';
 import { useProgressStore } from '@/stores/useProgressStore';
 import { useUserStore } from '@/stores/useUserStore';
 import { useChatStore } from '@/stores/useChatStore';
+import { saveHealthSnapshot } from '@/lib/api';
 
 export function useAppSync() {
   const session = useAuthStore((s) => s.session);
@@ -47,6 +48,13 @@ export function useAppSync() {
 
       const readiness = await getReadinessScore();
       useWorkoutStore.getState().updateReadiness(readiness);
+      saveHealthSnapshot({
+        readiness_score: readiness.score,
+        hrv: readiness.hrv,
+        resting_hr: readiness.restingHR,
+        sleep_score: readiness.sleepScore,
+        recovery_score: readiness.recoveryScore,
+      }).catch(() => {});
     } catch {
       // Silently fail — Apple Health not available in Expo Go
     }

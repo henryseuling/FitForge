@@ -8,7 +8,7 @@ import * as DocumentPicker from 'expo-document-picker';
 import { colors } from '@/lib/theme';
 import { parseStrongCSV, parseFitbodCSV, parseHevyCSV, parseGenericCSV, parseJSON, ParsedWorkout } from '@/lib/importParsers';
 import { matchAllExercises, ExerciseMatch } from '@/lib/exerciseMatcher';
-import { createDataImport, updateDataImport, bulkInsertImportedWorkouts } from '@/lib/api';
+import { createDataImport, updateDataImport, bulkInsertImportedWorkouts, upsertExerciseProfile, record1RMHistory } from '@/lib/api';
 import { generateImportCalibration } from '@/lib/workoutEngine';
 
 type Source = 'strong' | 'fitbod' | 'hevy' | 'csv' | 'json';
@@ -133,7 +133,20 @@ export default function ImportDataScreen() {
           recentSets: ex.sets.map((s) => ({ weight: s.weight, reps: s.reps, date: w.date })),
         }))
       );
-      generateImportCalibration({ importedData }).catch(() => {});
+      generateImportCalibration({ importedData })
+        .then(async (profiles) => {
+          await Promise.all(
+            profiles.map(async (profile) => {
+              await upsertExerciseProfile(profile).catch(() => {});
+              await record1RMHistory({
+                exercise_id: profile.exercise_id,
+                exercise_name: profile.exercise_name,
+                estimated_1rm: profile.estimated_1rm,
+              }).catch(() => {});
+            })
+          );
+        })
+        .catch(() => {});
 
       setStep(3);
       Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
