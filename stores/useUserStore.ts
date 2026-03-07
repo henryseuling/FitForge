@@ -17,6 +17,7 @@ export interface UserData {
   goals: string[];
   equipment: string[];
   frequency: number;
+  sessionDuration: number;
   units: 'imperial' | 'metric';
   notifications: boolean;
   integrations: { name: string; connected: boolean }[];
@@ -48,6 +49,7 @@ const INITIAL_STATE: UserData = {
   goals: [],
   equipment: [],
   frequency: 0,
+  sessionDuration: 60,
   units: 'imperial',
   notifications: true,
   integrations: [
@@ -97,6 +99,7 @@ export const useUserStore = create<UserState>((set) => ({
     if (updates.goals !== undefined) dbUpdates.goals = updates.goals;
     if (updates.equipment !== undefined) dbUpdates.equipment = updates.equipment;
     if (updates.frequency !== undefined) dbUpdates.frequency = updates.frequency;
+    if (updates.sessionDuration !== undefined) dbUpdates.session_duration = updates.sessionDuration;
     if (updates.units !== undefined) dbUpdates.units = updates.units;
     if (updates.notifications !== undefined) dbUpdates.notifications = updates.notifications;
     if (Object.keys(dbUpdates).length > 0) {

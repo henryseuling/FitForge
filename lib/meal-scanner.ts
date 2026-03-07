@@ -22,6 +22,10 @@ export interface ScannedMeal {
 }
 
 export async function analyzeMealPhoto(base64Image: string): Promise<ScannedMeal> {
+  if (!API_KEY) {
+    throw new Error('API key not configured. Set EXPO_PUBLIC_CLAUDE_API_KEY in your environment.');
+  }
+
   try {
     const response = await fetch(CLAUDE_API_URL, {
       method: 'POST',
@@ -32,7 +36,7 @@ export async function analyzeMealPhoto(base64Image: string): Promise<ScannedMeal
       },
       body: JSON.stringify({
         model: 'claude-sonnet-4-20250514',
-        max_tokens: 1024,
+        max_tokens: 2048,
         messages: [
           {
             role: 'user',

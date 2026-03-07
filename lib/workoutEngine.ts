@@ -10,6 +10,7 @@ const CLAUDE_API_URL = 'https://api.anthropic.com/v1/messages';
 // TODO: Move to a Supabase Edge Function in production
 const API_KEY = process.env.EXPO_PUBLIC_CLAUDE_API_KEY || '';
 const MODEL = 'claude-sonnet-4-20250514';
+// NOTE: max_tokens increased from 1024 to 2048 across all Claude calls
 
 // ── Types ────────────────────────────────────────────────────────
 

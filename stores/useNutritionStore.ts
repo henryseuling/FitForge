@@ -10,6 +10,9 @@ import {
 export interface FoodItem {
   name: string;
   calories: number;
+  protein?: number;
+  carbs?: number;
+  fat?: number;
 }
 
 export interface Meal {
@@ -67,17 +70,18 @@ export const useNutritionStore = create<NutritionState>((set, get) => ({
 
   addMeal: (meal) => {
     set((state) => ({ meals: [...state.meals, meal] }));
-    // Persist to Supabase with actual macro values
+    // Persist to Supabase — distribute macros proportionally across food items
     const mealType = meal.type.toLowerCase();
+    const foodCount = meal.foods.length;
     apiLogMeal(
       mealType,
       mealType,
-      meal.foods.map((f, i) => ({
+      meal.foods.map((f) => ({
         name: f.name,
         calories: f.calories,
-        protein: i === 0 ? meal.protein : 0,
-        carbs: i === 0 ? meal.carbs : 0,
-        fat: i === 0 ? meal.fat : 0,
+        protein: f.protein ?? (foodCount > 0 ? Math.round(meal.protein / foodCount) : meal.protein),
+        carbs: f.carbs ?? (foodCount > 0 ? Math.round(meal.carbs / foodCount) : meal.carbs),
+        fat: f.fat ?? (foodCount > 0 ? Math.round(meal.fat / foodCount) : meal.fat),
       }))
     ).catch((err) => console.warn('Failed to persist meal:', err));
   },
@@ -152,11 +156,11 @@ export const useNutritionStore = create<NutritionState>((set, get) => ({
           id: m.id,
           type: m.meal_type || 'snack',
           time: new Date(m.logged_at).toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' }),
-          foods: (m.food_items || []).map((f: any) => ({ name: f.name, calories: f.calories })),
-          totalCalories: (m.food_items || []).reduce((sum: number, f: any) => sum + (f.calories || 0), 0),
-          protein: (m.food_items || []).reduce((sum: number, f: any) => sum + (f.protein || 0), 0),
-          carbs: (m.food_items || []).reduce((sum: number, f: any) => sum + (f.carbs || 0), 0),
-          fat: (m.food_items || []).reduce((sum: number, f: any) => sum + (f.fat || 0), 0),
+          foods: (m.food_items ?? []).map((f: any) => ({ name: f.name, calories: f.calories, protein: f.protein ?? 0, carbs: f.carbs ?? 0, fat: f.fat ?? 0 })),
+          totalCalories: (m.food_items ?? []).reduce((sum: number, f: any) => sum + (f.calories ?? 0), 0),
+          protein: (m.food_items ?? []).reduce((sum: number, f: any) => sum + (f.protein ?? 0), 0),
+          carbs: (m.food_items ?? []).reduce((sum: number, f: any) => sum + (f.carbs ?? 0), 0),
+          fat: (m.food_items ?? []).reduce((sum: number, f: any) => sum + (f.fat ?? 0), 0),
         }));
       }
 

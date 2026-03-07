@@ -48,7 +48,7 @@ function QuickAction({ label, onPress }: { label: string; onPress: () => void })
 }
 
 export default function ChatScreen() {
-  const { messages, isLoading, sendUserMessage } = useChatStore();
+  const { messages, isLoading, sendUserMessage, lastError, retryLastMessage } = useChatStore();
   const { workoutName, dayNumber } = useWorkoutStore();
   const [inputText, setInputText] = useState('');
   const scrollRef = useRef<ScrollView>(null);
@@ -109,6 +109,21 @@ export default function ChatScreen() {
               <View style={{ paddingVertical: 14, paddingHorizontal: 16, borderRadius: 18, backgroundColor: colors.surface, borderLeftWidth: 2, borderLeftColor: 'rgba(232, 168, 56, 0.25)' }}>
                 <Text style={{ fontFamily: 'DMSans', fontSize: 14, color: colors.textTertiary }}>Thinking...</Text>
               </View>
+            </View>
+          )}
+          {lastError && lastError.retryable && !isLoading && (
+            <View style={{ alignItems: 'center', paddingVertical: 8 }}>
+              <Pressable
+                onPress={retryLastMessage}
+                style={{
+                  flexDirection: 'row', alignItems: 'center', gap: 6,
+                  paddingVertical: 8, paddingHorizontal: 16,
+                  borderRadius: 100, backgroundColor: 'rgba(232, 168, 56, 0.1)',
+                  borderWidth: 1, borderColor: 'rgba(232, 168, 56, 0.2)',
+                }}
+              >
+                <Text style={{ fontFamily: 'DMSans-SemiBold', fontSize: 13, color: colors.primary }}>↻ Retry</Text>
+              </Pressable>
             </View>
           )}
         </ScrollView>

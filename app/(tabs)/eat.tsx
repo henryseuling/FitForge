@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { ScrollView, View, Text, Pressable, Alert, RefreshControl, ActivityIndicator } from 'react-native';
+import { ScrollView, View, Text, Pressable, Alert, RefreshControl, ActivityIndicator, Animated } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import Svg, { Circle, Path } from 'react-native-svg';
 import * as Haptics from 'expo-haptics';
@@ -10,44 +10,66 @@ import { useUserStore } from '@/stores/useUserStore';
 import { getAIMealSuggestion } from '@/lib/workoutEngine';
 
 function CalorieRing() {
-  const { calorieTarget, totalCalories, totalProtein, totalCarbs, totalFat, proteinTarget, carbsTarget, fatTarget } = useNutritionStore();
+  const { calorieTarget, totalCalories, remainingCalories } = useNutritionStore();
   const consumed = totalCalories();
+  const remaining = remainingCalories();
+  const isOver = remaining < 0;
   const progress = calorieTarget > 0 ? Math.min(consumed / calorieTarget, 1) : 0;
   const circumference = 2 * Math.PI * 68;
   const offset = Math.max(circumference * (1 - progress), 0);
+  const ringColor = isOver ? colors.danger : colors.primary;
+
+  return (
+    <View style={{ marginHorizontal: 20, marginTop: 12, padding: 20, borderRadius: 16, backgroundColor: colors.surface, borderWidth: 1, borderColor: 'rgba(255,255,255,0.04)', alignItems: 'center' }}>
+      <View style={{ width: 160, height: 160, alignItems: 'center', justifyContent: 'center', marginBottom: 12 }}>
+        <Svg width={160} height={160} viewBox="0 0 160 160">
+          <Circle cx={80} cy={80} r={68} fill="none" stroke={colors.elevated} strokeWidth={10} />
+          <Circle cx={80} cy={80} r={68} fill="none" stroke={ringColor} strokeWidth={10} strokeLinecap="round" strokeDasharray={`${circumference}`} strokeDashoffset={offset} rotation={-90} origin="80,80" />
+        </Svg>
+        <View style={{ position: 'absolute', alignItems: 'center' }}>
+          <Text style={{ fontFamily: 'DMSans-Bold', fontSize: 36, color: ringColor }}>{isOver ? Math.abs(remaining) : remaining}</Text>
+          <Text style={{ fontFamily: 'DMSans', fontSize: 11, color: isOver ? colors.danger : colors.textSecondary, marginTop: 2 }}>{isOver ? 'over' : 'remaining'}</Text>
+        </View>
+      </View>
+    </View>
+  );
+}
+
+function MacroProgressBars() {
+  const { totalProtein, totalCarbs, totalFat, proteinTarget, carbsTarget, fatTarget } = useNutritionStore();
 
   const macros = [
-    { label: 'Protein', value: totalProtein(), target: proteinTarget, color: colors.success },
-    { label: 'Carbs', value: totalCarbs(), target: carbsTarget, color: colors.primary },
-    { label: 'Fat', value: totalFat(), target: fatTarget, color: colors.warning },
+    { label: 'Protein', current: totalProtein(), target: proteinTarget, color: '#3B82F6', unit: 'g' },
+    { label: 'Carbs', current: totalCarbs(), target: carbsTarget, color: colors.primary, unit: 'g' },
+    { label: 'Fat', current: totalFat(), target: fatTarget, color: '#EC4899', unit: 'g' },
   ];
 
   return (
-    <View style={{ marginHorizontal: 20, padding: 20, borderRadius: 16, backgroundColor: colors.surface, borderWidth: 1, borderColor: 'rgba(255,255,255,0.04)', alignItems: 'center' }}>
-      <View style={{ width: 160, height: 160, alignItems: 'center', justifyContent: 'center' }}>
-        <Svg width={160} height={160} viewBox="0 0 160 160">
-          <Circle cx={80} cy={80} r={68} fill="none" stroke={colors.elevated} strokeWidth={10} />
-          <Circle cx={80} cy={80} r={68} fill="none" stroke={colors.primary} strokeWidth={10} strokeLinecap="round" strokeDasharray={`${circumference}`} strokeDashoffset={offset} rotation={-90} origin="80,80" />
-        </Svg>
-        <View style={{ position: 'absolute', alignItems: 'center' }}>
-          <Text style={{ fontFamily: 'JetBrainsMono-ExtraBold', fontSize: 32, color: colors.textPrimary }}>{consumed.toLocaleString()}</Text>
-          <Text style={{ fontFamily: 'DMSans', fontSize: 12, color: colors.textSecondary }}>of {calorieTarget.toLocaleString()} kcal</Text>
-        </View>
-      </View>
-      <View style={{ flexDirection: 'row', justifyContent: 'center', paddingTop: 20, gap: 24 }}>
-        {macros.map((m) => (
-          <View key={m.label} style={{ alignItems: 'center', gap: 4 }}>
-            <Text style={{ fontFamily: 'DMSans-Medium', fontSize: 11, color: colors.textTertiary, textTransform: 'uppercase', letterSpacing: 0.7 }}>{m.label}</Text>
-            <Text>
-              <Text style={{ fontFamily: 'JetBrainsMono-Bold', fontSize: 18, color: m.color }}>{m.value}</Text>
-              <Text style={{ fontFamily: 'DMSans', fontSize: 12, color: colors.textTertiary }}>g</Text>
-            </Text>
-            <View style={{ width: 56, height: 5, borderRadius: 3, backgroundColor: colors.elevated, overflow: 'hidden' }}>
-              <View style={{ width: `${m.target > 0 ? Math.min((m.value / m.target) * 100, 100) : 0}%`, height: 5, borderRadius: 3, backgroundColor: m.color }} />
+    <View style={{ marginHorizontal: 20, marginTop: 16, gap: 16 }}>
+      {macros.map((macro) => {
+        const percentage = Math.min((macro.current / macro.target) * 100, 100);
+        return (
+          <View key={macro.label} style={{ gap: 8 }}>
+            <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' }}>
+              <Text style={{ fontFamily: 'DMSans-SemiBold', fontSize: 13, color: colors.textPrimary }}>{macro.label}</Text>
+              <Text style={{ fontFamily: 'DMSans-Medium', fontSize: 12, color: colors.textSecondary }}>
+                <Text style={{ color: macro.color, fontFamily: 'DMSans-Bold' }}>{macro.current}</Text>
+                <Text>/{macro.target}{macro.unit}</Text>
+              </Text>
+            </View>
+            <View style={{ height: 8, borderRadius: 4, backgroundColor: colors.elevated, overflow: 'hidden' }}>
+              <View
+                style={{
+                  height: 8,
+                  borderRadius: 4,
+                  backgroundColor: macro.color,
+                  width: `${percentage}%`,
+                }}
+              />
             </View>
           </View>
-        ))}
-      </View>
+        );
+      })}
     </View>
   );
 }
@@ -55,39 +77,45 @@ function CalorieRing() {
 function WaterTracker() {
   const { waterGlasses, setWaterGlasses } = useNutritionStore();
   const target = 8;
-  const progress = Math.min(waterGlasses / target, 1);
 
   return (
-    <View style={{ marginHorizontal: 20, marginTop: 8, padding: 16, borderRadius: 16, backgroundColor: colors.surface, borderWidth: 1, borderColor: 'rgba(255,255,255,0.04)' }}>
+    <View style={{ marginHorizontal: 20, marginTop: 20, gap: 12 }}>
       <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' }}>
-        <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10 }}>
-          <View style={{ width: 32, height: 32, borderRadius: 10, backgroundColor: 'rgba(96, 165, 250, 0.12)', alignItems: 'center', justifyContent: 'center' }}>
-            <Svg width={16} height={16} viewBox="0 0 16 16" fill="none">
-              <Path d="M8 2C6 4 4 6 4 9a4 4 0 008 0c0-3-2-5-4-7z" fill="#60A5FA" />
-            </Svg>
-          </View>
-          <View>
-            <Text style={{ fontFamily: 'DMSans-SemiBold', fontSize: 14, color: colors.textPrimary }}>Water</Text>
-            <Text style={{ fontFamily: 'DMSans', fontSize: 12, color: colors.textTertiary }}>{waterGlasses}/{target} glasses</Text>
-          </View>
-        </View>
-        <View style={{ flexDirection: 'row', gap: 8 }}>
-          <Pressable
-            onPress={() => { if (waterGlasses > 0) { setWaterGlasses(waterGlasses - 1); Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light); } }}
-            style={{ width: 32, height: 32, borderRadius: 8, backgroundColor: colors.elevated, alignItems: 'center', justifyContent: 'center' }}
-          >
-            <Text style={{ fontFamily: 'DMSans-Bold', fontSize: 16, color: colors.textSecondary }}>-</Text>
-          </Pressable>
-          <Pressable
-            onPress={() => { setWaterGlasses(waterGlasses + 1); Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light); }}
-            style={{ width: 32, height: 32, borderRadius: 8, backgroundColor: 'rgba(96, 165, 250, 0.15)', alignItems: 'center', justifyContent: 'center' }}
-          >
-            <Text style={{ fontFamily: 'DMSans-Bold', fontSize: 16, color: '#60A5FA' }}>+</Text>
-          </Pressable>
-        </View>
+        <Text style={{ fontFamily: 'DMSans-SemiBold', fontSize: 14, color: colors.textPrimary }}>Water Tracker</Text>
+        <Text style={{ fontFamily: 'DMSans', fontSize: 12, color: colors.textTertiary }}>{waterGlasses}/{target} glasses</Text>
       </View>
-      <View style={{ height: 4, borderRadius: 2, backgroundColor: colors.elevated, marginTop: 12 }}>
-        <View style={{ height: 4, borderRadius: 2, backgroundColor: '#60A5FA', width: `${progress * 100}%` }} />
+      <View style={{ flexDirection: 'row', justifyContent: 'space-between', gap: 6 }}>
+        {Array.from({ length: target }).map((_, index) => (
+          <Pressable
+            key={index}
+            onPress={() => {
+              if (index < waterGlasses) {
+                setWaterGlasses(index);
+              } else {
+                setWaterGlasses(index + 1);
+              }
+              Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+            }}
+            style={{
+              flex: 1,
+              aspectRatio: 0.6,
+              borderRadius: 8,
+              backgroundColor: index < waterGlasses ? '#3B82F6' : colors.elevated,
+              borderWidth: 1,
+              borderColor: index < waterGlasses ? '#3B82F6' : 'rgba(255,255,255,0.06)',
+              alignItems: 'center',
+              justifyContent: 'center',
+              opacity: index < waterGlasses ? 1 : 0.6,
+            }}
+          >
+            <Svg width={16} height={16} viewBox="0 0 16 16" fill="none">
+              <Path
+                d="M8 2C6 4 4 6 4 9a4 4 0 008 0c0-3-2-5-4-7z"
+                fill={index < waterGlasses ? '#ffffff' : colors.textTertiary}
+              />
+            </Svg>
+          </Pressable>
+        ))}
       </View>
     </View>
   );
@@ -96,8 +124,8 @@ function WaterTracker() {
 function MealCard({ meal, onDelete }: { meal: any; onDelete: () => void }) {
   const iconColors: Record<string, string> = {
     breakfast: colors.primary,
-    lunch: colors.success,
-    dinner: colors.danger,
+    lunch: '#10B981',
+    dinner: '#EF4444',
     snack: colors.warning,
   };
   const iconColor = iconColors[meal.type] || colors.textSecondary;
@@ -117,37 +145,36 @@ function MealCard({ meal, onDelete }: { meal: any; onDelete: () => void }) {
           { text: 'Delete', style: 'destructive', onPress: onDelete },
         ]);
       }}
-      style={{ marginHorizontal: 20, marginVertical: 4, padding: 14, paddingHorizontal: 16, borderRadius: 16, backgroundColor: colors.surface, borderWidth: 1, borderColor: 'rgba(255,255,255,0.04)', gap: 10 }}
+      style={{ marginHorizontal: 20, marginVertical: 6, padding: 14, borderRadius: 12, backgroundColor: colors.surface, borderWidth: 1, borderColor: 'rgba(255,255,255,0.04)' }}
     >
-      <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' }}>
-        <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10 }}>
-          <View style={{ width: 32, height: 32, borderRadius: 10, backgroundColor: iconColor + '1A', alignItems: 'center', justifyContent: 'center' }}>
-            <View style={{ width: 8, height: 8, borderRadius: 4, backgroundColor: iconColor }} />
+      <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-start' }}>
+        <View style={{ flexDirection: 'row', alignItems: 'center', gap: 12, flex: 1 }}>
+          <View style={{ width: 40, height: 40, borderRadius: 10, backgroundColor: iconColor + '20', alignItems: 'center', justifyContent: 'center' }}>
+            <View style={{ width: 10, height: 10, borderRadius: 5, backgroundColor: iconColor }} />
           </View>
-          <View>
+          <View style={{ flex: 1 }}>
             <Text style={{ fontFamily: 'DMSans-SemiBold', fontSize: 14, color: colors.textPrimary }}>{typeLabels[meal.type] || meal.type}</Text>
-            <Text style={{ fontFamily: 'DMSans', fontSize: 12, color: colors.textTertiary }}>{meal.time}</Text>
+            <Text style={{ fontFamily: 'DMSans', fontSize: 11, color: colors.textTertiary }}>{meal.time}</Text>
           </View>
         </View>
-        <Text>
-          <Text style={{ fontFamily: 'JetBrainsMono-Bold', fontSize: 16, color: colors.textPrimary }}>{meal.totalCalories} </Text>
-          <Text style={{ fontFamily: 'DMSans', fontSize: 12, color: colors.textTertiary }}>kcal</Text>
-        </Text>
-      </View>
-      {meal.foods.length > 1 && (
-        <View style={{ padding: 10, paddingHorizontal: 12, borderRadius: 10, backgroundColor: colors.elevated, gap: 6 }}>
-          {meal.foods.map((food: any, i: number) => (
-            <View key={i} style={{ flexDirection: 'row', justifyContent: 'space-between' }}>
-              <Text style={{ fontFamily: 'DMSans', fontSize: 13, color: colors.textSecondary }}>{food.name}</Text>
-              <Text style={{ fontFamily: 'JetBrainsMono-Medium', fontSize: 12, color: colors.textSecondary }}>{food.calories}</Text>
-            </View>
-          ))}
+        <View style={{ alignItems: 'flex-end' }}>
+          <Text style={{ fontFamily: 'DMSans-Bold', fontSize: 16, color: colors.textPrimary }}>{meal.totalCalories}</Text>
+          <Text style={{ fontFamily: 'DMSans', fontSize: 10, color: colors.textTertiary }}>kcal</Text>
         </View>
-      )}
-      <View style={{ flexDirection: 'row', gap: 16 }}>
-        <Text style={{ fontFamily: 'DMSans', fontSize: 11, color: colors.success }}>P {meal.protein}g</Text>
-        <Text style={{ fontFamily: 'DMSans', fontSize: 11, color: colors.primary }}>C {meal.carbs}g</Text>
-        <Text style={{ fontFamily: 'DMSans', fontSize: 11, color: colors.warning }}>F {meal.fat}g</Text>
+      </View>
+      <View style={{ marginTop: 10, paddingVertical: 8, paddingHorizontal: 12, borderRadius: 8, backgroundColor: colors.elevated, flexDirection: 'row', justifyContent: 'space-around' }}>
+        <View style={{ alignItems: 'center' }}>
+          <Text style={{ fontFamily: 'DMSans-Medium', fontSize: 10, color: colors.textTertiary }}>Protein</Text>
+          <Text style={{ fontFamily: 'DMSans-Bold', fontSize: 12, color: '#3B82F6', marginTop: 2 }}>{meal.protein}g</Text>
+        </View>
+        <View style={{ alignItems: 'center' }}>
+          <Text style={{ fontFamily: 'DMSans-Medium', fontSize: 10, color: colors.textTertiary }}>Carbs</Text>
+          <Text style={{ fontFamily: 'DMSans-Bold', fontSize: 12, color: colors.primary, marginTop: 2 }}>{meal.carbs}g</Text>
+        </View>
+        <View style={{ alignItems: 'center' }}>
+          <Text style={{ fontFamily: 'DMSans-Medium', fontSize: 10, color: colors.textTertiary }}>Fat</Text>
+          <Text style={{ fontFamily: 'DMSans-Bold', fontSize: 12, color: '#EC4899', marginTop: 2 }}>{meal.fat}g</Text>
+        </View>
       </View>
     </Pressable>
   );
@@ -286,36 +313,19 @@ export default function EatScreen() {
         keyboardShouldPersistTaps="handled"
         refreshControl={<RefreshControl refreshing={refreshing} onRefresh={handleRefresh} tintColor={colors.primary} />}
       >
-        <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', paddingHorizontal: 20, paddingTop: 16, paddingBottom: 8 }}>
-          <Text style={{ fontFamily: 'DMSans-Bold', fontSize: 28, color: colors.textPrimary, letterSpacing: -0.8 }}>Eat</Text>
-          <Text style={{ fontFamily: 'DMSans', fontSize: 13, color: colors.textSecondary }}>
-            {new Date().toLocaleDateString('en-US', { weekday: 'long', month: 'short', day: 'numeric' })}
+        <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', paddingHorizontal: 20, paddingTop: 16, paddingBottom: 12 }}>
+          <Text style={{ fontFamily: 'DMSans-Bold', fontSize: 32, color: colors.textPrimary, letterSpacing: -0.8 }}>Eat</Text>
+          <Text style={{ fontFamily: 'DMSans', fontSize: 12, color: colors.textSecondary }}>
+            {new Date().toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}
           </Text>
         </View>
 
         <CalorieRing />
+        <MacroProgressBars />
         <WaterTracker />
 
-        <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', paddingHorizontal: 20, paddingTop: 20, paddingBottom: 8 }}>
+        <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', paddingHorizontal: 20, paddingTop: 24, paddingBottom: 12 }}>
           <Text style={{ fontFamily: 'DMSans-SemiBold', fontSize: 16, color: colors.textPrimary }}>Today's Meals</Text>
-          <View style={{ flexDirection: 'row', gap: 8 }}>
-            <Pressable
-              onPress={() => { Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light); router.push('/add-meal'); }}
-              accessibilityRole="button"
-              accessibilityLabel="Add meal manually"
-              style={{ flexDirection: 'row', alignItems: 'center', gap: 6, paddingVertical: 6, paddingHorizontal: 12, borderRadius: 100, backgroundColor: colors.surface, borderWidth: 1, borderColor: 'rgba(255,255,255,0.06)' }}
-            >
-              <Text style={{ fontFamily: 'DMSans-SemiBold', fontSize: 12, color: colors.textSecondary }}>+ Add</Text>
-            </Pressable>
-            <Pressable
-              onPress={() => { Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light); router.push('/camera'); }}
-              accessibilityRole="button"
-              accessibilityLabel="Snap a photo to log a meal"
-              style={{ flexDirection: 'row', alignItems: 'center', gap: 6, paddingVertical: 6, paddingHorizontal: 12, borderRadius: 100, backgroundColor: colors.primary }}
-            >
-              <Text style={{ fontFamily: 'DMSans-SemiBold', fontSize: 12, color: colors.bg }}>Snap Meal</Text>
-            </Pressable>
-          </View>
         </View>
 
         {meals.length === 0 ? (
@@ -326,14 +336,55 @@ export default function EatScreen() {
           ))
         )}
 
-        <View style={{ marginHorizontal: 20, marginTop: 8, padding: 14, paddingHorizontal: 16, borderRadius: 12, backgroundColor: 'rgba(232, 168, 56, 0.06)', borderWidth: 1, borderColor: 'rgba(232, 168, 56, 0.1)', gap: 6 }}>
-          <Text style={{ fontFamily: 'DMSans-SemiBold', fontSize: 13, color: colors.primary }}>{remaining > 0 ? `${remaining.toLocaleString()} kcal remaining` : 'Calorie target reached!'}</Text>
-          <Text style={{ fontFamily: 'DMSans', fontSize: 12, lineHeight: 18, color: colors.textSecondary }}>
-            {proteinLeft > 0 ? `You need ~${proteinLeft}g more protein to hit your target.` : `Protein target reached!`}
-          </Text>
+        <View style={{ flexDirection: 'row', gap: 12, marginHorizontal: 20, marginTop: 24, marginBottom: 20 }}>
+          <Pressable
+            onPress={() => { Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light); router.push('/camera'); }}
+            accessibilityRole="button"
+            accessibilityLabel="Scan a meal with camera"
+            style={({ pressed }) => ({
+              flex: 1,
+              flexDirection: 'row',
+              alignItems: 'center',
+              justifyContent: 'center',
+              gap: 10,
+              paddingVertical: 14,
+              borderRadius: 12,
+              backgroundColor: colors.primary,
+              opacity: pressed ? 0.85 : 1,
+            })}
+          >
+            <Svg width={18} height={18} viewBox="0 0 24 24" fill="none">
+              <Path d="M23 19a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4l2-3h6l2 3h4a2 2 0 0 1 2 2z" stroke={colors.bg} strokeWidth={2} strokeLinecap="round" strokeLinejoin="round" />
+              <Circle cx={12} cy={13} r={4} stroke={colors.bg} strokeWidth={2} />
+            </Svg>
+            <Text style={{ fontFamily: 'DMSans-Bold', fontSize: 15, color: colors.bg }}>Scan Meal</Text>
+          </Pressable>
+
+          <Pressable
+            onPress={() => { Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light); router.push('/add-meal'); }}
+            accessibilityRole="button"
+            accessibilityLabel="Add meal manually"
+            style={({ pressed }) => ({
+              flex: 1,
+              flexDirection: 'row',
+              alignItems: 'center',
+              justifyContent: 'center',
+              gap: 10,
+              paddingVertical: 14,
+              borderRadius: 12,
+              backgroundColor: colors.surface,
+              borderWidth: 1,
+              borderColor: 'rgba(255,255,255,0.08)',
+              opacity: pressed ? 0.8 : 1,
+            })}
+          >
+            <Svg width={18} height={18} viewBox="0 0 24 24" fill="none">
+              <Path d="M12 5v14M5 12h14" stroke={colors.textPrimary} strokeWidth={2.5} strokeLinecap="round" strokeLinejoin="round" />
+            </Svg>
+            <Text style={{ fontFamily: 'DMSans-Bold', fontSize: 15, color: colors.textPrimary }}>Add Meal</Text>
+          </Pressable>
         </View>
 
-        {/* AI Meal Suggestion */}
         <AIMealSuggestionCard />
 
         <View style={{ height: 20 }} />

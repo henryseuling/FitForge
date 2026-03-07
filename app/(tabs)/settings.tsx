@@ -14,7 +14,7 @@ function ProfileCard() {
   const weightLabel = units === 'metric' ? 'kg' : 'lb';
   return (
     <Pressable
-      onPress={() => router.push('/edit-profile')}
+      onPress={() => router.push('/settings/edit-personal' as any)}
       style={{ marginHorizontal: 20, padding: 16, borderRadius: 16, backgroundColor: colors.surface, borderWidth: 1, borderColor: 'rgba(255,255,255,0.04)', flexDirection: 'row', alignItems: 'center', gap: 14 }}
     >
       <View style={{ width: 52, height: 52, borderRadius: 26, backgroundColor: colors.primary, alignItems: 'center', justifyContent: 'center', borderWidth: 2, borderColor: 'rgba(232, 168, 56, 0.3)' }}>
@@ -102,24 +102,13 @@ function SettingsSection({ title, children }: { title: string; children: React.R
   );
 }
 
-function StatusDot({ connected }: { connected: boolean }) {
-  return (
-    <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
-      <View style={{ width: 6, height: 6, borderRadius: 3, backgroundColor: connected ? colors.success : colors.textTertiary }} />
-      <Text style={{ fontFamily: 'DMSans-Medium', fontSize: 13, color: connected ? colors.success : colors.textTertiary }}>
-        {connected ? 'Connected' : 'Not connected'}
-      </Text>
-    </View>
-  );
-}
-
 const REST_TIMER_OPTIONS = [60, 90, 120, 150, 180];
 
 export default function SettingsScreen() {
   const {
     trainingSplit, restTimerDuration, progressiveOverload, macroSplit,
     toggleProgressiveOverload, toggleUnits, toggleNotifications, setRestTimerDuration,
-    units, notifications, integrations,
+    units, notifications, integrations, frequency,
   } = useUserStore();
   const calorieTarget = useNutritionStore((s) => s.calorieTarget);
   const signOut = useAuthStore((s) => s.signOut);
@@ -222,7 +211,7 @@ export default function SettingsScreen() {
             label="Training Split"
             value={trainingSplit || 'Not set'}
             iconBg={colors.primaryMuted}
-            onPress={() => router.push('/edit-profile')}
+            onPress={() => router.push('/settings/edit-training' as any)}
           />
           <SettingsRow
             icon={goldDot}
@@ -239,6 +228,13 @@ export default function SettingsScreen() {
             onToggle={() => { toggleProgressiveOverload(); Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light); }}
             iconBg={colors.primaryMuted}
           />
+          <SettingsRow
+            icon={goldDot}
+            label="Schedule & Equipment"
+            value={`${frequency || 4} days/wk`}
+            iconBg={colors.primaryMuted}
+            onPress={() => router.push('/settings/edit-schedule' as any)}
+          />
         </SettingsSection>
 
         <SettingsSection title="Nutrition">
@@ -247,14 +243,14 @@ export default function SettingsScreen() {
             label="Calorie Target"
             value={calorieTarget.toLocaleString()}
             iconBg={colors.successMuted}
-            onPress={() => router.push('/edit-profile')}
+            onPress={() => router.push('/settings/edit-nutrition' as any)}
           />
           <SettingsRow
             icon={greenDot}
             label="Macro Split"
             value={macroSplit || 'Balanced'}
             iconBg={colors.successMuted}
-            onPress={() => router.push('/edit-profile')}
+            onPress={() => router.push('/settings/edit-nutrition' as any)}
           />
         </SettingsSection>
 
@@ -302,21 +298,20 @@ export default function SettingsScreen() {
         </SettingsSection>
 
         <SettingsSection title="Integrations">
-          <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingVertical: 12, paddingHorizontal: 16 }}>
-            <View style={{ flexDirection: 'row', alignItems: 'center', gap: 12 }}>
-              <View style={{ width: 30, height: 30, borderRadius: 8, backgroundColor: colors.dangerMuted, alignItems: 'center', justifyContent: 'center' }}>{redIcon}</View>
-              <Text style={{ fontFamily: 'DMSans-Medium', fontSize: 15, color: colors.textPrimary }}>Apple Health</Text>
-            </View>
-            <StatusDot connected={integrations.find((i) => i.name === 'Apple Health')?.connected ?? false} />
-          </View>
-          <View style={{ height: 1, backgroundColor: 'rgba(255,255,255,0.04)', marginLeft: 16 }} />
-          <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingVertical: 12, paddingHorizontal: 16 }}>
-            <View style={{ flexDirection: 'row', alignItems: 'center', gap: 12 }}>
-              <View style={{ width: 30, height: 30, borderRadius: 8, backgroundColor: colors.dangerMuted, alignItems: 'center', justifyContent: 'center' }}>{ringIcon}</View>
-              <Text style={{ fontFamily: 'DMSans-Medium', fontSize: 15, color: colors.textPrimary }}>Oura Ring</Text>
-            </View>
-            <StatusDot connected={integrations.find((i) => i.name === 'Oura Ring')?.connected ?? false} />
-          </View>
+          <SettingsRow
+            icon={redIcon}
+            label="Apple Health"
+            iconBg={colors.dangerMuted}
+            onPress={() => router.push('/settings/edit-health' as any)}
+            value={integrations.find((i) => i.name === 'Apple Health')?.connected ? 'Connected' : 'Not connected'}
+          />
+          <SettingsRow
+            icon={ringIcon}
+            label="Oura Ring"
+            iconBg={colors.dangerMuted}
+            onPress={() => router.push('/settings/edit-health' as any)}
+            value={integrations.find((i) => i.name === 'Oura Ring')?.connected ? 'Connected' : 'Not connected'}
+          />
         </SettingsSection>
 
         <SettingsSection title="Account">

@@ -88,6 +88,11 @@ export default function RootLayout() {
         <Stack.Screen name="add-meal" options={{ presentation: 'modal', animation: 'slide_from_bottom' }} />
         <Stack.Screen name="workout-history" options={{ presentation: 'modal', animation: 'slide_from_bottom' }} />
         <Stack.Screen name="active-workout" options={{ presentation: 'fullScreenModal', animation: 'slide_from_bottom', gestureEnabled: false }} />
+        <Stack.Screen name="settings/edit-personal" options={{ presentation: 'modal', animation: 'slide_from_bottom' }} />
+        <Stack.Screen name="settings/edit-training" options={{ presentation: 'modal', animation: 'slide_from_bottom' }} />
+        <Stack.Screen name="settings/edit-nutrition" options={{ presentation: 'modal', animation: 'slide_from_bottom' }} />
+        <Stack.Screen name="settings/edit-schedule" options={{ presentation: 'modal', animation: 'slide_from_bottom' }} />
+        <Stack.Screen name="settings/edit-health" options={{ presentation: 'modal', animation: 'slide_from_bottom' }} />
       </Stack>
     </>
   );
