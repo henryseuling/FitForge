@@ -7,8 +7,19 @@ interface GatewayEnvelope<T> {
 export type AIModelPreference = 'default' | 'workout' | 'vision';
 
 async function invokeAIGateway<T>(body: Record<string, unknown>): Promise<T> {
+  const {
+    data: { session },
+  } = await supabase.auth.getSession();
+
+  if (!session?.access_token) {
+    throw new Error('No active session for AI request');
+  }
+
   const { data, error } = await supabase.functions.invoke<GatewayEnvelope<T> | T>('ai-gateway', {
     body,
+    headers: {
+      Authorization: `Bearer ${session.access_token}`,
+    },
   });
 
   if (error) {

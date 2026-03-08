@@ -251,6 +251,34 @@ function isTextBlock(block: GatewayContentBlock): block is GatewayTextBlock {
   return block.type === 'text' && typeof (block as Partial<GatewayTextBlock>).text === 'string';
 }
 
+function normalizeGatewayContent(data: unknown): GatewayContentBlock[] {
+  if (Array.isArray(data)) {
+    return data as GatewayContentBlock[];
+  }
+
+  if (data && typeof data === 'object') {
+    const record = data as Record<string, unknown>;
+
+    if (Array.isArray(record.content)) {
+      return record.content as GatewayContentBlock[];
+    }
+
+    if (record.content && typeof record.content === 'object') {
+      return [record.content as GatewayContentBlock];
+    }
+
+    if (typeof record.text === 'string' && record.text.trim()) {
+      return [{ type: 'text', text: record.text }];
+    }
+
+    if (record.data && typeof record.data === 'object') {
+      return normalizeGatewayContent(record.data);
+    }
+  }
+
+  return [];
+}
+
 function prefersWorkoutModel(message: string): boolean {
   const normalized = message.toLowerCase();
   return [
@@ -303,11 +331,12 @@ export async function sendMessage(
       maxTokens: 640,
       modelPreference: prefersWorkoutModel(latestUserMessage) ? 'workout' : 'default',
     });
+    const contentBlocks = normalizeGatewayContent(data);
 
     let text = '';
     const toolCalls: ToolCall[] = [];
 
-    for (const block of data.content as GatewayContentBlock[]) {
+    for (const block of contentBlocks) {
       if (isTextBlock(block)) {
         text += block.text;
       } else if (isToolUseBlock(block)) {
@@ -360,11 +389,12 @@ export async function sendToolResults(
       maxTokens: 512,
       modelPreference: getFollowUpModelPreference(toolCalls),
     });
+    const contentBlocks = normalizeGatewayContent(data);
 
     let text = '';
     const newToolCalls: ToolCall[] = [];
 
-    for (const block of (data.content || []) as GatewayContentBlock[]) {
+    for (const block of contentBlocks) {
       if (isTextBlock(block)) {
         text += block.text;
       } else if (isToolUseBlock(block)) {
