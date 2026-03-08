@@ -1,7 +1,13 @@
 // Claude AI Coach client — with tool use support
 
 import { AI_TOOLS } from './aiTools';
-import { invokeChatAI, invokeToolFollowUpAI, type AIModelPreference } from './aiGateway';
+import {
+  invokeChatAI,
+  invokeToolFollowUpAI,
+  invokeStreamingChatAI,
+  type AIModelPreference,
+  type StreamCallbacks,
+} from './aiGateway';
 import type { CoachContext } from './coachMemory';
 import {
   buildWorkoutAgentDirective,
@@ -32,7 +38,7 @@ export interface AppStateSnapshot {
   workout: {
     workoutName: string;
     dayNumber: number;
-    readinessScore: number;
+    readinessScore: number | null;
     workoutStartedAt: number | null;
     activeExerciseIndex: number;
     exercises: Exercise[];
@@ -182,6 +188,8 @@ OPERATING RULES:
 - Chat is the user's primary control surface. Prefer taking action with tools over telling the user to navigate elsewhere.
 - Use tools when the user asks to log sets, meals, water, profile changes, goals, or workout edits.
 - If the user asks what their next workout is, asks for a workout to be created, or wants the upcoming session changed, use the workout optimization tools instead of saying you cannot.
+- Never say you need a workout to be manually loaded before you can help. Build, adjust, or start the upcoming workout through tools.
+- Treat requests like "what should I do today?", "what's next?", "make it 45 minutes", "avoid squats", "change tomorrow to lower body", and "start my workout" as app-control requests.
 - If the user states a durable preference, limitation, dislike, injury, or schedule constraint, save it with remember_preference.
 - If confidence is low, ask exactly one short clarifying question instead of guessing.
 - Always confirm what you changed after calling a tool.
@@ -301,7 +309,31 @@ function prefersWorkoutModel(message: string): boolean {
     'leg day',
     'make it 45',
     'make it 60',
+    'what should i do today',
+    'what should i train',
+    'start my workout',
+    'change tomorrow',
+    'shorter workout',
+    'longer workout',
+    'avoid ',
+    'without ',
+    'skip ',
   ].some((phrase) => normalized.includes(phrase));
+}
+
+// Tool-use keywords that indicate the message needs Sonnet (not Haiku)
+const TOOL_USE_KEYWORDS = [
+  'log', 'set', 'update', 'change', 'add', 'remove', 'delete', 'track',
+  'record', 'save', 'workout', 'meal', 'water', 'weight', 'goal',
+  'remember', 'swap', 'replace', 'start', 'plan', 'build', 'create',
+  'adjust', 'avoid', 'skip', 'next', 'calori', 'macro', 'protein',
+];
+
+export function shouldUseFastModel(message: string): boolean {
+  const words = message.trim().split(/\s+/);
+  if (words.length >= 15) return false;
+  const lower = message.toLowerCase();
+  return !TOOL_USE_KEYWORDS.some((kw) => lower.includes(kw));
 }
 
 function getFollowUpModelPreference(toolCalls: ToolCall[]): AIModelPreference {
@@ -312,24 +344,103 @@ function getFollowUpModelPreference(toolCalls: ToolCall[]): AIModelPreference {
     : 'default';
 }
 
-export async function sendMessage(
+/** Trim messages to the last N (keeping alternating user/assistant pairs). */
+export function trimHistory(messages: Message[], maxMessages = 20): Message[] {
+  if (messages.length <= maxMessages) return messages;
+  return messages.slice(-maxMessages);
+}
+
+export async function sendMessageStreaming(
   messages: Message[],
   state: AppStateSnapshot,
-  coachContext: CoachContext
+  coachContext: CoachContext,
+  callbacks: {
+    onToken: (text: string) => void;
+    preferFastModel?: boolean;
+    signal?: AbortSignal;
+  }
 ): Promise<ClaudeResponse> {
   const systemPrompt = buildSystemPrompt(state, coachContext);
   const latestUserMessage = [...messages].reverse().find((message) => message.role === 'user')?.content ?? '';
+
+  let modelPreference: AIModelPreference = prefersWorkoutModel(latestUserMessage) ? 'workout' : 'default';
+  if (modelPreference === 'default' && callbacks.preferFastModel && shouldUseFastModel(latestUserMessage)) {
+    modelPreference = 'fast';
+  }
+
+  const trimmed = trimHistory(messages);
+
+  try {
+    let accumulatedText = '';
+    const toolCalls: ToolCall[] = [];
+
+    const data = await invokeStreamingChatAI(
+      {
+        systemPrompt,
+        tools: AI_TOOLS,
+        messages: trimmed.map((m) => ({ role: m.role, content: m.content })),
+        maxTokens: 640,
+        modelPreference,
+      },
+      {
+        onToken: (text) => {
+          accumulatedText += text;
+          callbacks.onToken(text);
+        },
+        onToolUse: (block) => {
+          toolCalls.push({ id: block.id, name: block.name, input: block.input });
+        },
+        signal: callbacks.signal,
+      }
+    );
+
+    // Also check content blocks for any text/tools not caught by stream
+    const contentBlocks = normalizeGatewayContent(data);
+    for (const block of contentBlocks) {
+      if (isTextBlock(block) && !accumulatedText.includes(block.text)) {
+        accumulatedText += block.text;
+      } else if (isToolUseBlock(block) && !toolCalls.some((tc) => tc.id === block.id)) {
+        toolCalls.push({ id: block.id, name: block.name, input: block.input });
+      }
+    }
+
+    return { text: accumulatedText, toolCalls };
+  } catch (error) {
+    // If streaming fails, fall back to non-streaming
+    if (error instanceof Error && error.name === 'AbortError') {
+      return { text: '', toolCalls: [] };
+    }
+    console.warn('Streaming failed, falling back to batch:', error);
+    return sendMessage(messages, state, coachContext, { preferFastModel: callbacks.preferFastModel });
+  }
+}
+
+export async function sendMessage(
+  messages: Message[],
+  state: AppStateSnapshot,
+  coachContext: CoachContext,
+  options?: { preferFastModel?: boolean }
+): Promise<ClaudeResponse> {
+  const systemPrompt = buildSystemPrompt(state, coachContext);
+  const latestUserMessage = [...messages].reverse().find((message) => message.role === 'user')?.content ?? '';
+
+  let modelPreference: AIModelPreference = prefersWorkoutModel(latestUserMessage) ? 'workout' : 'default';
+  if (modelPreference === 'default' && options?.preferFastModel && shouldUseFastModel(latestUserMessage)) {
+    modelPreference = 'fast';
+  }
+
+  const trimmed = trimHistory(messages);
 
   try {
     const data = await invokeChatAI({
       systemPrompt,
       tools: AI_TOOLS,
-      messages: messages.map((m) => ({
+      messages: trimmed.map((m) => ({
         role: m.role,
         content: m.content,
       })),
       maxTokens: 640,
-      modelPreference: prefersWorkoutModel(latestUserMessage) ? 'workout' : 'default',
+      modelPreference,
     });
     const contentBlocks = normalizeGatewayContent(data);
 
@@ -367,12 +478,13 @@ export async function sendToolResults(
   toolResults: Array<{ id: string; result: string }>
 ): Promise<ClaudeResponse> {
   const systemPrompt = buildSystemPrompt(state, coachContext);
+  const trimmed = trimHistory(originalMessages);
 
   try {
     const data = await invokeToolFollowUpAI({
       systemPrompt,
       tools: AI_TOOLS,
-      messages: originalMessages.map((m) => ({
+      messages: trimmed.map((m) => ({
         role: m.role,
         content: m.content,
       })),

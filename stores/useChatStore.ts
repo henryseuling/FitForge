@@ -1,8 +1,16 @@
 import { create } from 'zustand';
-import { sendMessage, sendToolResults, type AppStateSnapshot, type Message } from '@/lib/claude';
+import {
+  sendMessage,
+  sendMessageStreaming,
+  sendToolResults,
+  trimHistory,
+  type AppStateSnapshot,
+  type Message,
+} from '@/lib/claude';
 import { executeAIToolCall, executeAIUndoAction, type AIUndoAction } from '@/lib/aiActions';
 import { saveChatMessage, fetchChatHistory } from '@/lib/api';
-import { buildCoachContext } from '@/lib/coachMemory';
+import { buildCoachContext, type CoachContext } from '@/lib/coachMemory';
+import { createDeterministicWorkoutToolCall } from '@/lib/workoutCommandRouter';
 import { useNutritionStore } from './useNutritionStore';
 import { useProgressStore } from './useProgressStore';
 import { useUserStore } from './useUserStore';
@@ -25,28 +33,54 @@ interface PendingUndo {
   reviewRoute?: string;
 }
 
+export type ChatStatus = 'idle' | 'sending' | 'streaming' | 'calling_tools' | 'error';
+
 interface ChatState {
   messages: ChatMessage[];
   isLoading: boolean;
+  chatStatus: ChatStatus;
   hasLoadedHistory: boolean;
   lastError: ChatError | null;
   pendingUndo: PendingUndo | null;
+  preferFastModel: boolean;
   loadHistory: () => Promise<void>;
   sendUserMessage: (text: string) => Promise<void>;
   retryLastMessage: () => Promise<void>;
   undoLastAction: () => Promise<void>;
   clearPendingUndo: () => void;
   addAssistantMessage: (text: string) => void;
+  setPreferFastModel: (value: boolean) => void;
   reset: () => void;
 }
 
+// ── Snapshot caching ──────────────────────────────────────────────
+
+let _snapshotVersion = 0;
+let _cachedSnapshot: AppStateSnapshot | null = null;
+let _lastSnapshotVersion = -1;
+
+// Increment whenever any store changes — called from subscribers below
+function incrementSnapshotVersion() {
+  _snapshotVersion++;
+}
+
+// Subscribe to all stores for version tracking
+useUserStore.subscribe(incrementSnapshotVersion);
+useWorkoutStore.subscribe(incrementSnapshotVersion);
+useNutritionStore.subscribe(incrementSnapshotVersion);
+useProgressStore.subscribe(incrementSnapshotVersion);
+
 function buildSnapshot(): AppStateSnapshot {
+  if (_lastSnapshotVersion === _snapshotVersion && _cachedSnapshot) {
+    return _cachedSnapshot;
+  }
+
   const user = useUserStore.getState();
   const workout = useWorkoutStore.getState();
   const nutrition = useNutritionStore.getState();
   const progress = useProgressStore.getState();
 
-  return {
+  _cachedSnapshot = {
     user: {
       name: user.name,
       level: user.level,
@@ -91,7 +125,32 @@ function buildSnapshot(): AppStateSnapshot {
           }
         : undefined,
   };
+  _lastSnapshotVersion = _snapshotVersion;
+  return _cachedSnapshot;
 }
+
+// ── Coach context caching (60s TTL) ──────────────────────────────
+
+let _cachedCoachContext: CoachContext | null = null;
+let _coachContextTimestamp = 0;
+const COACH_CONTEXT_TTL = 60_000; // 60 seconds
+
+async function getCachedCoachContext(): Promise<CoachContext> {
+  const now = Date.now();
+  if (_cachedCoachContext && now - _coachContextTimestamp < COACH_CONTEXT_TTL) {
+    return _cachedCoachContext;
+  }
+  _cachedCoachContext = await buildCoachContext();
+  _coachContextTimestamp = now;
+  return _cachedCoachContext;
+}
+
+function invalidateCoachContextCache() {
+  _cachedCoachContext = null;
+  _coachContextTimestamp = 0;
+}
+
+// ── Constants & helpers ──────────────────────────────────────────
 
 const WELCOME_MESSAGE: ChatMessage = {
   id: '1',
@@ -146,12 +205,27 @@ function extractPendingUndo(toolResults: Array<{ id: string; result: string }>):
   return null;
 }
 
+// ── Active request tracking (abort on new request) ───────────────
+
+let _activeAbortController: AbortController | null = null;
+
+function abortPreviousRequest() {
+  if (_activeAbortController) {
+    _activeAbortController.abort();
+    _activeAbortController = null;
+  }
+}
+
+// ── Store ────────────────────────────────────────────────────────
+
 export const useChatStore = create<ChatState>((set, get) => ({
   messages: [WELCOME_MESSAGE],
   isLoading: false,
+  chatStatus: 'idle' as ChatStatus,
   hasLoadedHistory: false,
   lastError: null,
   pendingUndo: null,
+  preferFastModel: true,
 
   loadHistory: async () => {
     if (get().hasLoadedHistory) return;
@@ -179,6 +253,11 @@ export const useChatStore = create<ChatState>((set, get) => ({
   sendUserMessage: async (text: string) => {
     if (get().isLoading) return;
 
+    // Abort any in-flight request
+    abortPreviousRequest();
+    const abortController = new AbortController();
+    _activeAbortController = abortController;
+
     const userMessage: ChatMessage = {
       id: createMessageId(),
       role: 'user',
@@ -186,9 +265,13 @@ export const useChatStore = create<ChatState>((set, get) => ({
       timestamp: createTimestamp(),
     };
 
+    // Create a placeholder assistant message for streaming
+    const streamingMessageId = createMessageId(1);
+
     set((state) => ({
       messages: [...state.messages, userMessage],
       isLoading: true,
+      chatStatus: 'sending' as ChatStatus,
       lastError: null,
     }));
 
@@ -200,16 +283,85 @@ export const useChatStore = create<ChatState>((set, get) => ({
         await workoutState.hydrateUpcomingWorkout().catch(() => false);
       }
 
-      const history: Message[] = get().messages.slice(-12).map((m) => ({
+      const history: Message[] = get().messages.slice(-20).map((m) => ({
         role: m.role,
         content: m.content,
       }));
 
-      const snapshot = buildSnapshot();
-      const coachContext = await buildCoachContext();
-      let { text: replyText, toolCalls } = await sendMessage(history, snapshot, coachContext);
+      const [snapshot, coachContext] = await Promise.all([
+        Promise.resolve(buildSnapshot()),
+        getCachedCoachContext(),
+      ]);
+
+      const deterministicWorkoutTool = createDeterministicWorkoutToolCall(text);
+      let replyText = '';
+      let toolCalls = deterministicWorkoutTool
+        ? [deterministicWorkoutTool]
+        : [];
+
+      if (!deterministicWorkoutTool) {
+        // Add streaming placeholder
+        const streamingMessage: ChatMessage = {
+          id: streamingMessageId,
+          role: 'assistant',
+          content: '',
+          timestamp: createTimestamp(),
+        };
+
+        set((state) => ({
+          messages: [...state.messages, streamingMessage],
+          chatStatus: 'streaming' as ChatStatus,
+        }));
+
+        try {
+          const response = await sendMessageStreaming(
+            history,
+            snapshot,
+            coachContext,
+            {
+              onToken: (token) => {
+                // Update the streaming message content in place
+                set((state) => ({
+                  messages: state.messages.map((m) =>
+                    m.id === streamingMessageId
+                      ? { ...m, content: m.content + token }
+                      : m
+                  ),
+                }));
+              },
+              preferFastModel: get().preferFastModel,
+              signal: abortController.signal,
+            }
+          );
+          replyText = response.text;
+          toolCalls = response.toolCalls;
+        } catch (err) {
+          // If streaming failed entirely, remove placeholder and fall back
+          if (err instanceof Error && err.name === 'AbortError') {
+            set((state) => ({
+              messages: state.messages.filter((m) => m.id !== streamingMessageId),
+            }));
+            return;
+          }
+
+          set((state) => ({
+            messages: state.messages.filter((m) => m.id !== streamingMessageId),
+          }));
+
+          const response = await sendMessage(history, snapshot, coachContext, {
+            preferFastModel: get().preferFastModel,
+          });
+          replyText = response.text;
+          toolCalls = response.toolCalls;
+        }
+      }
 
       if (toolCalls.length > 0) {
+        set({ chatStatus: 'calling_tools' as ChatStatus });
+
+        // Invalidate coach context cache since tools may change data
+        invalidateCoachContextCache();
+
         const toolResults: Array<{ id: string; result: string }> = [];
 
         for (const toolCall of toolCalls) {
@@ -235,8 +387,14 @@ export const useChatStore = create<ChatState>((set, get) => ({
           }
         }
 
+        // Invalidate snapshot cache since tool calls change state
+        _lastSnapshotVersion = -1;
+
         const refreshedSnapshot = buildSnapshot();
         const refreshedCoachContext = await buildCoachContext();
+        _cachedCoachContext = refreshedCoachContext;
+        _coachContextTimestamp = Date.now();
+
         const followUp = await sendToolResults(
           history,
           refreshedSnapshot,
@@ -260,17 +418,47 @@ export const useChatStore = create<ChatState>((set, get) => ({
       }
 
       const finalText = replyText || '';
-      const assistantMessage: ChatMessage = {
-        id: createMessageId(1),
-        role: 'assistant',
-        content: finalText,
-        timestamp: createTimestamp(),
-      };
 
-      set((state) => ({
-        messages: [...state.messages, assistantMessage],
-        lastError: null,
-      }));
+      // If we used streaming, update the placeholder message; otherwise add new
+      if (!deterministicWorkoutTool) {
+        // Remove the streaming placeholder and add the final message
+        // (the placeholder may have partial text from streaming that we want to replace
+        //  if tool calls changed the reply, or keep if no tools were called)
+        if (toolCalls.length > 0) {
+          // Tools were called — replace streaming placeholder with final composed text
+          set((state) => ({
+            messages: state.messages.map((m) =>
+              m.id === streamingMessageId
+                ? { ...m, content: finalText, timestamp: createTimestamp() }
+                : m
+            ),
+            lastError: null,
+          }));
+        } else {
+          // No tools — streaming message already has the final content, just ensure timestamp
+          set((state) => ({
+            messages: state.messages.map((m) =>
+              m.id === streamingMessageId
+                ? { ...m, timestamp: createTimestamp() }
+                : m
+            ),
+            lastError: null,
+          }));
+        }
+      } else {
+        // Deterministic tool call path — no streaming placeholder exists
+        const assistantMessage: ChatMessage = {
+          id: createMessageId(1),
+          role: 'assistant',
+          content: finalText,
+          timestamp: createTimestamp(),
+        };
+
+        set((state) => ({
+          messages: [...state.messages, assistantMessage],
+          lastError: null,
+        }));
+      }
 
       saveChatMessage('assistant', finalText).catch((err) =>
         console.warn('Failed to persist assistant message:', err)
@@ -286,17 +474,25 @@ export const useChatStore = create<ChatState>((set, get) => ({
         id: createMessageId(1),
         role: 'assistant',
         content: err?.message?.includes('Network request failed')
-          ? '📡 Network error — check your connection and try again.'
-          : `⚠️ ${errorMsg}`,
+          ? 'Network error — check your connection and try again.'
+          : errorMsg,
         timestamp: createTimestamp(),
       };
 
       set((state) => ({
-        messages: [...state.messages, errorMessage],
+        messages: [
+          // Remove streaming placeholder if it exists
+          ...state.messages.filter((m) => m.id !== streamingMessageId),
+          errorMessage,
+        ],
         lastError: { type: errorType, message: errorMsg, retryable },
+        chatStatus: 'error' as ChatStatus,
       }));
     } finally {
-      set({ isLoading: false });
+      if (_activeAbortController === abortController) {
+        _activeAbortController = null;
+      }
+      set({ isLoading: false, chatStatus: 'idle' as ChatStatus });
     }
   },
 
@@ -323,6 +519,7 @@ export const useChatStore = create<ChatState>((set, get) => ({
 
     try {
       await executeAIUndoAction(pendingUndo.action);
+      invalidateCoachContextCache();
 
       const assistantMessage: ChatMessage = {
         id: createMessageId(1),
@@ -343,7 +540,7 @@ export const useChatStore = create<ChatState>((set, get) => ({
       const assistantMessage: ChatMessage = {
         id: createMessageId(1),
         role: 'assistant',
-        content: `⚠️ ${errorMessage}`,
+        content: errorMessage,
         timestamp: createTimestamp(),
       };
 
@@ -375,12 +572,17 @@ export const useChatStore = create<ChatState>((set, get) => ({
     );
   },
 
-  reset: () =>
+  setPreferFastModel: (value: boolean) => set({ preferFastModel: value }),
+
+  reset: () => {
+    invalidateCoachContextCache();
     set({
       messages: [WELCOME_MESSAGE],
       isLoading: false,
+      chatStatus: 'idle' as ChatStatus,
       hasLoadedHistory: false,
       lastError: null,
       pendingUndo: null,
-    }),
+    });
+  },
 }));

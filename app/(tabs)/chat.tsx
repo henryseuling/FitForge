@@ -62,9 +62,9 @@ function CoachStatusStrip() {
   const recoveryLabel =
     recoveryScore != null
       ? `${recoveryScore}/100 recovery`
-      : readinessScore > 0
-        ? `${readinessScore}/100 readiness`
-        : 'No recovery signal yet';
+      : readinessScore != null
+        ? `${readinessScore}/100 estimated readiness`
+        : 'No recovery estimate yet';
   const workoutLabel = workoutName
     ? dayNumber > 0
       ? `${workoutName} · Day ${dayNumber}`
@@ -93,8 +93,8 @@ function CoachStatusStrip() {
           </Text>
           <Text style={{ fontFamily: 'DMSans', fontSize: 12, color: colors.textSecondary }}>
             {recoveryLabel}
-            {hrv ? ` · HRV ${hrv}` : ''}
-            {sleepScore ? ` · Sleep ${sleepScore}` : ''}
+            {hrv != null ? ` · HRV ${hrv}` : ''}
+            {sleepScore != null ? ` · Sleep ${sleepScore}` : ''}
           </Text>
         </View>
         <View style={{ alignItems: 'flex-end' }}>
@@ -138,7 +138,7 @@ function ComposerAction({
 }
 
 export default function ChatScreen() {
-  const { messages, isLoading, sendUserMessage, lastError, retryLastMessage, pendingUndo, undoLastAction, clearPendingUndo } = useChatStore();
+  const { messages, isLoading, chatStatus, sendUserMessage, lastError, retryLastMessage, pendingUndo, undoLastAction, clearPendingUndo } = useChatStore();
   const { workoutName, dayNumber } = useWorkoutStore();
   const [inputText, setInputText] = useState('');
   const scrollRef = useRef<ScrollView>(null);
@@ -272,10 +272,12 @@ export default function ChatScreen() {
           {messages.map((msg) => (
             <MessageBubble key={msg.id} message={msg} />
           ))}
-          {isLoading && (
+          {isLoading && chatStatus !== 'streaming' && (
             <View style={{ alignItems: 'flex-start', paddingHorizontal: 20, paddingVertical: 4 }}>
               <View style={{ paddingVertical: 14, paddingHorizontal: 16, borderRadius: 18, backgroundColor: colors.surface, borderLeftWidth: 2, borderLeftColor: 'rgba(232, 168, 56, 0.25)' }}>
-                <Text style={{ fontFamily: 'DMSans', fontSize: 14, color: colors.textTertiary }}>Thinking...</Text>
+                <Text style={{ fontFamily: 'DMSans', fontSize: 14, color: colors.textTertiary }}>
+                  {chatStatus === 'sending' ? 'Sending...' : chatStatus === 'calling_tools' ? 'Updating your data...' : 'Thinking...'}
+                </Text>
               </View>
             </View>
           )}
