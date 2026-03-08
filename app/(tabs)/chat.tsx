@@ -1,5 +1,6 @@
 import React, { useState, useRef } from 'react';
-import { ScrollView, View, Text, TextInput, Pressable, KeyboardAvoidingView, Platform, Keyboard } from 'react-native';
+import { ScrollView, View, Text, TextInput, Pressable, KeyboardAvoidingView, Platform, Keyboard, Animated } from 'react-native';
+import * as Haptics from 'expo-haptics';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { router } from 'expo-router';
 import { colors } from '@/lib/theme';
@@ -34,6 +35,70 @@ const MessageBubble = React.memo(function MessageBubble({ message }: { message: 
     </View>
   );
 }, (prev, next) => prev.message.id === next.message.id && prev.message.content === next.message.content);
+
+function TypingIndicator({ label }: { label?: string }) {
+  const dot1 = useRef(new Animated.Value(0.3)).current;
+  const dot2 = useRef(new Animated.Value(0.3)).current;
+  const dot3 = useRef(new Animated.Value(0.3)).current;
+
+  React.useEffect(() => {
+    const animate = (dot: Animated.Value, delay: number) =>
+      Animated.loop(
+        Animated.sequence([
+          Animated.delay(delay),
+          Animated.timing(dot, { toValue: 1, duration: 400, useNativeDriver: true }),
+          Animated.timing(dot, { toValue: 0.3, duration: 400, useNativeDriver: true }),
+        ])
+      );
+    const a1 = animate(dot1, 0);
+    const a2 = animate(dot2, 200);
+    const a3 = animate(dot3, 400);
+    a1.start();
+    a2.start();
+    a3.start();
+    return () => { a1.stop(); a2.stop(); a3.stop(); };
+  }, [dot1, dot2, dot3]);
+
+  return (
+    <View style={{ alignItems: 'flex-start', paddingHorizontal: 20, paddingVertical: 4 }}>
+      <View style={{ paddingVertical: 14, paddingHorizontal: 16, borderRadius: 18, backgroundColor: colors.surface, borderLeftWidth: 2, borderLeftColor: 'rgba(232, 168, 56, 0.25)', flexDirection: 'row', alignItems: 'center', gap: 8 }}>
+        <View style={{ flexDirection: 'row', gap: 4, alignItems: 'center' }}>
+          {[dot1, dot2, dot3].map((dot, i) => (
+            <Animated.View key={i} style={{ width: 6, height: 6, borderRadius: 3, backgroundColor: colors.primary, opacity: dot }} />
+          ))}
+        </View>
+        {label ? <Text style={{ fontFamily: 'DMSans', fontSize: 13, color: colors.textTertiary }}>{label}</Text> : null}
+      </View>
+    </View>
+  );
+}
+
+function SkeletonBubbles() {
+  const shimmer = useRef(new Animated.Value(0.4)).current;
+  React.useEffect(() => {
+    Animated.loop(
+      Animated.sequence([
+        Animated.timing(shimmer, { toValue: 0.7, duration: 800, useNativeDriver: true }),
+        Animated.timing(shimmer, { toValue: 0.4, duration: 800, useNativeDriver: true }),
+      ])
+    ).start();
+  }, [shimmer]);
+
+  return (
+    <View style={{ paddingHorizontal: 20, gap: 10, paddingTop: 10 }}>
+      {[0.8, 0.6, 0.9].map((width, i) => (
+        <Animated.View key={i} style={{
+          width: `${width * 100}%`,
+          height: i % 2 === 0 ? 48 : 36,
+          borderRadius: 14,
+          backgroundColor: colors.surface,
+          opacity: shimmer,
+          alignSelf: i % 2 === 0 ? 'flex-start' : 'flex-end',
+        }} />
+      ))}
+    </View>
+  );
+}
 
 function QuickAction({ label, onPress }: { label: string; onPress: () => void }) {
   return (
@@ -148,6 +213,7 @@ export default function ChatScreen() {
   const handleSend = async (text?: string) => {
     const messageText = text || inputText.trim();
     if (!messageText || isLoading) return;
+    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
     setInputText('');
     await sendUserMessage(messageText);
   };
@@ -268,13 +334,7 @@ export default function ChatScreen() {
             <MessageBubble key={msg.id} message={msg} />
           ))}
           {isLoading && chatStatus !== 'streaming' && (
-            <View style={{ alignItems: 'flex-start', paddingHorizontal: 20, paddingVertical: 4 }}>
-              <View style={{ paddingVertical: 14, paddingHorizontal: 16, borderRadius: 18, backgroundColor: colors.surface, borderLeftWidth: 2, borderLeftColor: 'rgba(232, 168, 56, 0.25)' }}>
-                <Text style={{ fontFamily: 'DMSans', fontSize: 14, color: colors.textTertiary }}>
-                  {chatStatus === 'sending' ? 'Sending...' : chatStatus === 'calling_tools' ? 'Updating your data...' : 'Thinking...'}
-                </Text>
-              </View>
-            </View>
+            <TypingIndicator label={chatStatus === 'sending' ? 'Sending' : chatStatus === 'calling_tools' ? 'Updating your data' : undefined} />
           )}
           {lastError && lastError.retryable && !isLoading && (
             <View style={{ alignItems: 'center', paddingVertical: 8 }}>
