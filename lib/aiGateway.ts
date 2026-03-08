@@ -1,4 +1,5 @@
 import { supabase } from './supabase';
+import { useAuthStore } from '@/stores/useAuthStore';
 
 interface GatewayEnvelope<T> {
   data: T;
@@ -7,18 +8,20 @@ interface GatewayEnvelope<T> {
 export type AIModelPreference = 'default' | 'workout' | 'vision';
 
 async function invokeAIGateway<T>(body: Record<string, unknown>): Promise<T> {
+  const authStoreSession = useAuthStore.getState().session;
   const {
     data: { session },
   } = await supabase.auth.getSession();
+  const activeSession = session ?? authStoreSession;
 
-  if (!session?.access_token) {
-    throw new Error('No active session for AI request');
+  if (!activeSession?.access_token) {
+    throw new Error('No active session for AI request. Sign out and sign back in, then try again.');
   }
 
   const { data, error } = await supabase.functions.invoke<GatewayEnvelope<T> | T>('ai-gateway', {
     body,
     headers: {
-      Authorization: `Bearer ${session.access_token}`,
+      Authorization: `Bearer ${activeSession.access_token}`,
     },
   });
 

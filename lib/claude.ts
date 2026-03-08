@@ -351,8 +351,9 @@ export async function sendMessage(
     return { text, toolCalls };
   } catch (error) {
     console.error('Claude API error:', error);
+    const message = error instanceof Error ? error.message : 'AI request failed';
     return {
-      text: "Sorry, I couldn't connect right now. Try again in a moment.",
+      text: `Chat failed: ${message}`,
       toolCalls: [],
     };
   }
@@ -405,6 +406,7 @@ export async function sendToolResults(
     return { text, toolCalls: newToolCalls };
   } catch (error) {
     console.error('Claude tool result error:', error);
-    return { text: '', toolCalls: [] };
+    const message = error instanceof Error ? error.message : 'AI follow-up failed';
+    return { text: `Tool follow-up failed: ${message}`, toolCalls: [] };
   }
 }
