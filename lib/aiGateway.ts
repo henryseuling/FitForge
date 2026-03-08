@@ -12,7 +12,23 @@ async function invokeAIGateway<T>(body: Record<string, unknown>): Promise<T> {
   const {
     data: { session },
   } = await supabase.auth.getSession();
-  const activeSession = session ?? authStoreSession;
+
+  let activeSession = session ?? authStoreSession;
+  const expiresAt = activeSession?.expires_at ? activeSession.expires_at * 1000 : null;
+  const isExpired = expiresAt != null && expiresAt <= Date.now() + 30_000;
+
+  if ((!activeSession?.access_token || isExpired) && activeSession?.refresh_token) {
+    const {
+      data: { session: refreshedSession },
+    } = await supabase.auth.refreshSession({
+      refresh_token: activeSession.refresh_token,
+    });
+
+    if (refreshedSession) {
+      activeSession = refreshedSession;
+      useAuthStore.setState({ session: refreshedSession, user: refreshedSession.user });
+    }
+  }
 
   if (!activeSession?.access_token) {
     throw new Error('No active session for AI request. Sign out and sign back in, then try again.');
