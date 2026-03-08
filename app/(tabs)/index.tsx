@@ -14,6 +14,7 @@ import SetLogger from '@/components/SetLogger';
 
 function ReadinessCard() {
   const { readinessScore, hrv, restingHR, sleepScore, recoveryScore } = useWorkoutStore();
+  const displayReadiness = readinessScore ?? recoveryScore ?? null;
 
   const metrics = [
     { label: 'HRV', value: hrv, color: colors.success },
@@ -40,17 +41,17 @@ function ReadinessCard() {
               </LinearGradient>
             </Defs>
             <Circle cx={44} cy={44} r={36} fill="none" stroke={colors.elevated} strokeWidth={8} />
-            <Circle cx={44} cy={44} r={36} fill="none" stroke="url(#grad)" strokeWidth={8} strokeLinecap="round" strokeDasharray="226" strokeDashoffset={226 - (Math.min(readinessScore, 100) / 100) * 226} rotation={-90} origin="44,44" />
+            <Circle cx={44} cy={44} r={36} fill="none" stroke="url(#grad)" strokeWidth={8} strokeLinecap="round" strokeDasharray="226" strokeDashoffset={displayReadiness != null ? 226 - (Math.min(displayReadiness, 100) / 100) * 226 : 226} rotation={-90} origin="44,44" />
           </Svg>
-          <Text style={{ position: 'absolute', fontFamily: 'JetBrainsMono-ExtraBold', fontSize: 28, color: colors.textPrimary }}>{readinessScore}</Text>
+          <Text style={{ position: 'absolute', fontFamily: 'JetBrainsMono-ExtraBold', fontSize: 28, color: colors.textPrimary }}>{displayReadiness ?? '—'}</Text>
         </View>
         <View style={{ flex: 1, gap: 8 }}>
           {metrics.map((m) => (
             <View key={m.label} style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' }}>
               <Text style={{ fontFamily: 'DMSans', fontSize: 13, color: colors.textSecondary }}>{m.label}</Text>
               <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
-                <View style={{ width: 48, height: 4, borderRadius: 2, backgroundColor: m.value > 0 ? m.color : colors.elevated }} />
-                <Text style={{ fontFamily: 'JetBrainsMono-SemiBold', fontSize: 13, color: m.value > 0 ? m.color : colors.textTertiary, width: 24, textAlign: 'right' }}>{m.value || '—'}</Text>
+                <View style={{ width: 48, height: 4, borderRadius: 2, backgroundColor: m.value != null ? m.color : colors.elevated }} />
+                <Text style={{ fontFamily: 'JetBrainsMono-SemiBold', fontSize: 13, color: m.value != null ? m.color : colors.textTertiary, width: 24, textAlign: 'right' }}>{m.value ?? '—'}</Text>
               </View>
             </View>
           ))}
@@ -395,6 +396,7 @@ function TodayHero({
   onPrimaryPress: () => void;
 }) {
   const { readinessScore, recoveryScore } = useWorkoutStore();
+  const heroRecoveryValue = recoveryScore ?? readinessScore ?? null;
   const { calorieTarget, totalCalories, proteinTarget, totalProtein } = useNutritionStore();
   const remainingCalories = Math.max(calorieTarget - totalCalories(), 0);
   const remainingProtein = Math.max(proteinTarget - totalProtein(), 0);
@@ -433,10 +435,10 @@ function TodayHero({
             Readiness
           </Text>
           <Text style={{ fontFamily: 'JetBrainsMono-Bold', fontSize: 22, color: colors.textPrimary, marginTop: 4 }}>
-            {recoveryScore || readinessScore}
+            {heroRecoveryValue ?? '—'}
           </Text>
           <Text style={{ fontFamily: 'DMSans', fontSize: 11, color: colors.textSecondary }}>
-            {recoveryScore ? 'recovery score' : 'training readiness'}
+            {recoveryScore != null ? 'recovery score' : readinessScore != null ? 'estimated readiness' : 'awaiting Apple Health'}
           </Text>
         </View>
         <View style={{ flex: 1, padding: 12, borderRadius: 14, backgroundColor: colors.elevated }}>
