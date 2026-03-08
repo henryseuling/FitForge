@@ -14,6 +14,9 @@ export async function fetchProfile() {
     .eq('id', user.id)
     .single();
   if (error) throw error;
+  if (!data || typeof data !== 'object' || !('id' in data)) {
+    throw new Error('Invalid profile response');
+  }
   return data;
 }
 
@@ -226,7 +229,9 @@ export async function fetchTodayMeals() {
     .order('logged_at', { ascending: true });
 
   if (error) throw error;
-  return data ?? [];
+  const meals = data ?? [];
+  // Validate each meal has required fields
+  return meals.filter((m: any) => m && typeof m === 'object' && m.id && m.meal_type);
 }
 
 export async function logMeal(name: string, mealType: string, items: Array<{
@@ -379,7 +384,9 @@ export async function fetchChatHistory(limit = 50) {
     .order('created_at', { ascending: true })
     .limit(limit);
   if (error) throw error;
-  return data ?? [];
+  const messages = data ?? [];
+  // Validate each message has required fields
+  return messages.filter((m: any) => m && typeof m === 'object' && m.role && m.content != null);
 }
 
 export async function saveChatMessage(role: 'user' | 'assistant', content: string) {
