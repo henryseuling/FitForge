@@ -63,9 +63,18 @@ if (
   );
 }
 
+const projectRef = (() => {
+  try {
+    return new URL(SUPABASE_URL).hostname.split('.')[0] || 'fitforge';
+  } catch {
+    return 'fitforge';
+  }
+})();
+
 export const supabase = createClient(SUPABASE_URL, SUPABASE_ANON_KEY, {
   auth: {
     storage: ExpoSecureStoreAdapter as any,
+    storageKey: `sb-${projectRef}-auth-token`,
     autoRefreshToken: true,
     persistSession: true,
     detectSessionInUrl: false,

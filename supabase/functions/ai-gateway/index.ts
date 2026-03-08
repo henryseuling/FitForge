@@ -6,8 +6,8 @@ const corsHeaders = {
 };
 
 const ANTHROPIC_API_URL = 'https://api.anthropic.com/v1/messages';
-const ANTHROPIC_DEFAULT_MODEL = Deno.env.get('ANTHROPIC_MODEL') || 'claude-sonnet-4-20250514';
-const ANTHROPIC_WORKOUT_MODEL = Deno.env.get('ANTHROPIC_WORKOUT_MODEL') || 'claude-opus-4-20250514';
+const ANTHROPIC_DEFAULT_MODEL = Deno.env.get('ANTHROPIC_MODEL') || 'claude-sonnet-4-6';
+const ANTHROPIC_WORKOUT_MODEL = Deno.env.get('ANTHROPIC_WORKOUT_MODEL') || 'claude-opus-4-6';
 const ANTHROPIC_VISION_MODEL = Deno.env.get('ANTHROPIC_VISION_MODEL') || ANTHROPIC_DEFAULT_MODEL;
 const ANTHROPIC_API_KEY = Deno.env.get('ANTHROPIC_API_KEY') || '';
 const SUPABASE_URL = Deno.env.get('SUPABASE_URL') || '';
