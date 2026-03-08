@@ -60,14 +60,32 @@ const INITIAL_STATE = {
   waterGlasses: 0,
 };
 
+// ── Cached nutrition totals ──────────────────────────────────────
+
+let _mealsHash = '';
+let _cachedTotals = { calories: 0, protein: 0, carbs: 0, fat: 0 };
+
+function computeTotals(meals: Meal[]) {
+  const hash = meals.map((m) => m.id).join(',');
+  if (hash === _mealsHash) return _cachedTotals;
+  _mealsHash = hash;
+  _cachedTotals = {
+    calories: meals.reduce((s, m) => s + m.totalCalories, 0),
+    protein: meals.reduce((s, m) => s + m.protein, 0),
+    carbs: meals.reduce((s, m) => s + m.carbs, 0),
+    fat: meals.reduce((s, m) => s + m.fat, 0),
+  };
+  return _cachedTotals;
+}
+
 export const useNutritionStore = create<NutritionState>((set, get) => ({
   ...INITIAL_STATE,
 
-  totalCalories: () => get().meals.reduce((sum, m) => sum + m.totalCalories, 0),
-  totalProtein: () => get().meals.reduce((sum, m) => sum + m.protein, 0),
-  totalCarbs: () => get().meals.reduce((sum, m) => sum + m.carbs, 0),
-  totalFat: () => get().meals.reduce((sum, m) => sum + m.fat, 0),
-  remainingCalories: () => get().calorieTarget - get().totalCalories(),
+  totalCalories: () => computeTotals(get().meals).calories,
+  totalProtein: () => computeTotals(get().meals).protein,
+  totalCarbs: () => computeTotals(get().meals).carbs,
+  totalFat: () => computeTotals(get().meals).fat,
+  remainingCalories: () => get().calorieTarget - computeTotals(get().meals).calories,
 
   addMeal: (meal) => {
     set((state) => ({ meals: [...state.meals, meal] }));

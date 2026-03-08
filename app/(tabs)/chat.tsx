@@ -1,4 +1,4 @@
-import React, { useState, useRef, useEffect } from 'react';
+import React, { useState, useRef } from 'react';
 import { ScrollView, View, Text, TextInput, Pressable, KeyboardAvoidingView, Platform, Keyboard } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { router } from 'expo-router';
@@ -7,7 +7,7 @@ import { useChatStore } from '@/stores/useChatStore';
 import { useNutritionStore } from '@/stores/useNutritionStore';
 import { useWorkoutStore } from '@/stores/useWorkoutStore';
 
-function MessageBubble({ message }: { message: any }) {
+const MessageBubble = React.memo(function MessageBubble({ message }: { message: { id: string; role: string; content: string; timestamp: string } }) {
   const isUser = message.role === 'user';
 
   return (
@@ -33,7 +33,7 @@ function MessageBubble({ message }: { message: any }) {
       </View>
     </View>
   );
-}
+}, (prev, next) => prev.message.id === next.message.id && prev.message.content === next.message.content);
 
 function QuickAction({ label, onPress }: { label: string; onPress: () => void }) {
   return (
@@ -143,13 +143,7 @@ export default function ChatScreen() {
   const [inputText, setInputText] = useState('');
   const scrollRef = useRef<ScrollView>(null);
 
-  useEffect(() => {
-    // Auto-scroll when new messages arrive
-    const timer = setTimeout(() => {
-      scrollRef.current?.scrollToEnd({ animated: true });
-    }, 100);
-    return () => clearTimeout(timer);
-  }, [messages.length, isLoading]);
+  // Auto-scroll handled by onContentSizeChange on the ScrollView
 
   const handleSend = async (text?: string) => {
     const messageText = text || inputText.trim();
@@ -267,6 +261,7 @@ export default function ChatScreen() {
           keyboardShouldPersistTaps="handled"
           keyboardDismissMode="on-drag"
           onScrollBeginDrag={() => Keyboard.dismiss()}
+          onContentSizeChange={() => scrollRef.current?.scrollToEnd({ animated: true })}
           contentContainerStyle={{ paddingBottom: 8 }}
         >
           {messages.map((msg) => (

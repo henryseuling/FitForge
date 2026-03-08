@@ -260,6 +260,31 @@ const INITIAL_STATE = {
   period: 'week' as const,
 };
 
+// ── Cached progress computations ──────────────────────────────────
+
+let _historyHash = '';
+let _cachedStreak = 0;
+let _cachedPRs: PersonalRecord[] = [];
+
+function getCachedStreak(history: WorkoutHistoryEntry[]): number {
+  const hash = history.map((w) => w.id).join(',');
+  if (hash === _historyHash) return _cachedStreak;
+  _historyHash = hash;
+  _cachedStreak = calculateStreak(history);
+  _cachedPRs = extractPersonalRecords(history);
+  return _cachedStreak;
+}
+
+function getCachedPRs(history: WorkoutHistoryEntry[]): PersonalRecord[] {
+  const hash = history.map((w) => w.id).join(',');
+  if (hash !== _historyHash) {
+    _historyHash = hash;
+    _cachedStreak = calculateStreak(history);
+    _cachedPRs = extractPersonalRecords(history);
+  }
+  return _cachedPRs;
+}
+
 export const useProgressStore = create<ProgressState>((set, get) => ({
   ...INITIAL_STATE,
 
@@ -337,8 +362,8 @@ export const useProgressStore = create<ProgressState>((set, get) => ({
 
       if (history) {
         updates.workoutHistory = history;
-        updates.streak = calculateStreak(history);
-        updates.personalRecords = extractPersonalRecords(history);
+        updates.streak = getCachedStreak(history);
+        updates.personalRecords = getCachedPRs(history);
         updates.volumeData = buildVolumeData(history, get().period);
       }
 
