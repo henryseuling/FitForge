@@ -1,4 +1,4 @@
-import React, { useState, useRef } from 'react';
+import React, { useState, useRef, useMemo } from 'react';
 import { ScrollView, View, Text, TextInput, Pressable, KeyboardAvoidingView, Platform, Keyboard, Animated } from 'react-native';
 import * as Haptics from 'expo-haptics';
 import { SafeAreaView } from 'react-native-safe-area-context';
@@ -7,6 +7,39 @@ import { colors } from '@/lib/theme';
 import { useChatStore } from '@/stores/useChatStore';
 import { useNutritionStore } from '@/stores/useNutritionStore';
 import { useWorkoutStore } from '@/stores/useWorkoutStore';
+
+// ── Date separator helper ────────────────────────────────────────
+
+function getDateLabel(timestamp: string): string | null {
+  // Timestamps are in "h:mm AM/PM" format, so we use message creation context
+  // For grouping, we'll use the current date since messages don't store full dates
+  return null; // Will be used with full date messages in future
+}
+
+function formatDateSeparator(dateStr: string): string {
+  const today = new Date();
+  const yesterday = new Date(today);
+  yesterday.setDate(today.getDate() - 1);
+
+  const todayStr = today.toISOString().split('T')[0];
+  const yesterdayStr = yesterday.toISOString().split('T')[0];
+
+  if (dateStr === todayStr) return 'Today';
+  if (dateStr === yesterdayStr) return 'Yesterday';
+  return new Date(dateStr + 'T00:00:00').toLocaleDateString('en-US', { month: 'long', day: 'numeric' });
+}
+
+// ── Components ───────────────────────────────────────────────────
+
+function DateSeparator({ label }: { label: string }) {
+  return (
+    <View style={{ alignItems: 'center', paddingVertical: 12 }}>
+      <View style={{ paddingVertical: 4, paddingHorizontal: 12, borderRadius: 100, backgroundColor: colors.surface }}>
+        <Text style={{ fontFamily: 'DMSans-Medium', fontSize: 11, color: colors.textTertiary }}>{label}</Text>
+      </View>
+    </View>
+  );
+}
 
 const MessageBubble = React.memo(function MessageBubble({ message }: { message: { id: string; role: string; content: string; timestamp: string } }) {
   const isUser = message.role === 'user';
@@ -30,7 +63,6 @@ const MessageBubble = React.memo(function MessageBubble({ message }: { message: 
         borderLeftColor: isUser ? 'rgba(232, 168, 56, 0.12)' : 'transparent',
       }}>
         <Text style={{ fontFamily: 'DMSans', fontSize: isUser ? 14 : 16, lineHeight: isUser ? 21 : 28, color: colors.textPrimary }}>{message.content}</Text>
-        <Text style={{ fontFamily: 'DMSans', fontSize: 11, color: isUser ? colors.textSecondary : colors.textTertiary }}>{message.timestamp}</Text>
       </View>
     </View>
   );
@@ -73,37 +105,13 @@ function TypingIndicator({ label }: { label?: string }) {
   );
 }
 
-function SkeletonBubbles() {
-  const shimmer = useRef(new Animated.Value(0.4)).current;
-  React.useEffect(() => {
-    Animated.loop(
-      Animated.sequence([
-        Animated.timing(shimmer, { toValue: 0.7, duration: 800, useNativeDriver: true }),
-        Animated.timing(shimmer, { toValue: 0.4, duration: 800, useNativeDriver: true }),
-      ])
-    ).start();
-  }, [shimmer]);
-
-  return (
-    <View style={{ paddingHorizontal: 20, gap: 10, paddingTop: 10 }}>
-      {[0.8, 0.6, 0.9].map((width, i) => (
-        <Animated.View key={i} style={{
-          width: `${width * 100}%`,
-          height: i % 2 === 0 ? 48 : 36,
-          borderRadius: 14,
-          backgroundColor: colors.surface,
-          opacity: shimmer,
-          alignSelf: i % 2 === 0 ? 'flex-start' : 'flex-end',
-        }} />
-      ))}
-    </View>
-  );
-}
-
 function QuickAction({ label, onPress }: { label: string; onPress: () => void }) {
   return (
     <Pressable
-      onPress={onPress}
+      onPress={() => {
+        Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+        onPress();
+      }}
       accessibilityRole="button"
       accessibilityLabel={label}
       style={{
@@ -204,33 +212,44 @@ function ComposerAction({
 
 export default function ChatScreen() {
   const { messages, isLoading, chatStatus, sendUserMessage, lastError, retryLastMessage, pendingUndo, undoLastAction, clearPendingUndo } = useChatStore();
-  const { workoutName, dayNumber } = useWorkoutStore();
+  const { workoutName, dayNumber, workoutStartedAt, exercises } = useWorkoutStore();
   const [inputText, setInputText] = useState('');
+  const [inputHeight, setInputHeight] = useState(44);
   const scrollRef = useRef<ScrollView>(null);
-
-  // Auto-scroll handled by onContentSizeChange on the ScrollView
 
   const handleSend = async (text?: string) => {
     const messageText = text || inputText.trim();
     if (!messageText || isLoading) return;
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
     setInputText('');
+    setInputHeight(44);
     await sendUserMessage(messageText);
   };
 
-  const quickActions = [
-    { label: "What should I do today?", message: "What should I work on today? Based on my recent workouts and recovery, what's the best plan?" },
-    { label: "How's my progress?", message: "How's my overall progress looking? Any areas I should focus on?" },
-    { label: 'Meal ideas', message: "I need a high-protein meal idea to hit my macro targets today. What do you suggest?" },
-  ];
+  // Context-aware quick actions
+  const isWorkoutActive = Boolean(workoutStartedAt) || exercises.length > 0;
+  const quickActions = useMemo(() => {
+    if (isWorkoutActive) {
+      return [
+        { label: "Log my last set", message: "Log my last set for the current exercise." },
+        { label: "What's next?", message: "What exercise should I do next?" },
+        { label: "Swap this exercise", message: "Can you suggest an alternative for my current exercise?" },
+      ];
+    }
+    return [
+      { label: "What should I do today?", message: "What should I work on today? Based on my recent workouts and recovery, what's the best plan?" },
+      { label: "How's my progress?", message: "How's my overall progress looking? Any areas I should focus on?" },
+      { label: 'Meal ideas', message: "I need a high-protein meal idea to hit my macro targets today. What do you suggest?" },
+    ];
+  }, [isWorkoutActive]);
+
   const showStarterActions = messages.length <= 2 && !pendingUndo;
 
   const workoutStatusLabel = workoutName ? (dayNumber > 0 ? 'Workout loaded' : 'Next workout ready') : 'No workout loaded';
-  const workoutContextLabel = workoutName
-    ? dayNumber > 0
-      ? `${workoutName} · Day ${dayNumber}`
-      : `${workoutName} · Up next`
-    : 'No active workout';
+
+  const charCount = inputText.length;
+  const showCharCount = charCount > 500;
+  const canSend = inputText.trim().length > 0 && !isLoading;
 
   return (
     <SafeAreaView style={{ flex: 1, backgroundColor: colors.bg }}>
@@ -347,7 +366,7 @@ export default function ChatScreen() {
                   borderWidth: 1, borderColor: 'rgba(232, 168, 56, 0.2)',
                 }}
               >
-                <Text style={{ fontFamily: 'DMSans-SemiBold', fontSize: 13, color: colors.primary }}>↻ Retry</Text>
+                <Text style={{ fontFamily: 'DMSans-SemiBold', fontSize: 13, color: colors.primary }}>Retry</Text>
               </Pressable>
             </View>
           )}
@@ -365,32 +384,65 @@ export default function ChatScreen() {
         <View style={{ paddingHorizontal: 20, paddingTop: 8, paddingBottom: 12, gap: 10 }}>
           <View style={{ flexDirection: 'row', gap: 8 }}>
             <ComposerAction label="Food Photo" tone="primary" onPress={() => router.push('/camera?source=chat')} />
-            <ComposerAction label="Next Workout" onPress={() => handleSend("What's my next workout and why?")} />
-          </View>
-          <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10 }}>
-            <TextInput
-              value={inputText}
-              onChangeText={setInputText}
-              onSubmitEditing={() => handleSend()}
-              placeholder="Ask coach anything or tell it what to update..."
-              placeholderTextColor={colors.textTertiary}
-              returnKeyType="send"
-              accessibilityLabel="Chat message input"
-              accessibilityHint="Type a message to your AI coach"
-              editable={!isLoading}
-              style={{
-                flex: 1, paddingVertical: 12, paddingHorizontal: 16,
-                borderRadius: 18, backgroundColor: colors.surface,
-                borderWidth: 1, borderColor: 'rgba(255,255,255,0.06)',
-                fontFamily: 'DMSans', fontSize: 14, color: colors.textPrimary,
-              }}
+            <ComposerAction
+              label={isWorkoutActive ? "Log Last Set" : "Next Workout"}
+              onPress={() => handleSend(isWorkoutActive ? "Log my last set." : "What's my next workout and why?")}
             />
-            <Pressable disabled={isLoading} onPress={() => handleSend()} accessibilityRole="button" accessibilityLabel="Send message" accessibilityState={{ disabled: !inputText.trim() || isLoading }} style={{
-              minWidth: 56, height: 44, paddingHorizontal: 14, borderRadius: 14,
-              alignItems: 'center', justifyContent: 'center',
-              backgroundColor: inputText.trim() && !isLoading ? colors.primary : colors.elevated,
-            }}>
-              <Text style={{ fontFamily: 'DMSans-Bold', fontSize: 14, color: inputText.trim() && !isLoading ? colors.bg : colors.textTertiary }}>Send</Text>
+          </View>
+          <View style={{ flexDirection: 'row', alignItems: 'flex-end', gap: 10 }}>
+            <View style={{ flex: 1 }}>
+              <TextInput
+                value={inputText}
+                onChangeText={setInputText}
+                onSubmitEditing={() => handleSend()}
+                onContentSizeChange={(e) => {
+                  const height = Math.min(Math.max(e.nativeEvent.contentSize.height, 44), 120);
+                  setInputHeight(height);
+                }}
+                placeholder="Ask coach anything or tell it what to update..."
+                placeholderTextColor={colors.textTertiary}
+                returnKeyType="send"
+                multiline
+                accessibilityLabel="Chat message input"
+                accessibilityHint="Type a message to your AI coach"
+                editable={!isLoading}
+                style={{
+                  height: inputHeight,
+                  paddingVertical: 12,
+                  paddingHorizontal: 16,
+                  borderRadius: 18,
+                  backgroundColor: colors.surface,
+                  borderWidth: 1,
+                  borderColor: 'rgba(255,255,255,0.06)',
+                  fontFamily: 'DMSans',
+                  fontSize: 14,
+                  color: colors.textPrimary,
+                  textAlignVertical: 'center',
+                }}
+              />
+              {showCharCount && (
+                <Text style={{
+                  position: 'absolute', bottom: 4, right: 12,
+                  fontFamily: 'DMSans', fontSize: 10, color: charCount > 1000 ? colors.danger : colors.textTertiary,
+                }}>
+                  {charCount}
+                </Text>
+              )}
+            </View>
+            <Pressable
+              disabled={!canSend}
+              onPress={() => handleSend()}
+              accessibilityRole="button"
+              accessibilityLabel="Send message"
+              accessibilityState={{ disabled: !canSend }}
+              style={{
+                minWidth: 56, height: 44, paddingHorizontal: 14, borderRadius: 14,
+                alignItems: 'center', justifyContent: 'center',
+                backgroundColor: canSend ? colors.primary : colors.elevated,
+                opacity: canSend ? 1 : 0.5,
+              }}
+            >
+              <Text style={{ fontFamily: 'DMSans-Bold', fontSize: 14, color: canSend ? colors.bg : colors.textTertiary }}>Send</Text>
             </Pressable>
           </View>
         </View>
