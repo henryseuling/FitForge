@@ -5,6 +5,7 @@ import { invokeChatAI, invokeToolFollowUpAI, type AIModelPreference } from './ai
 import type { CoachContext } from './coachMemory';
 import {
   buildWorkoutAgentDirective,
+  buildWorkoutInteractionLayer,
   buildWorkoutAgentProfileFromChat,
   formatWorkoutAgentSection,
 } from './workoutAgent';
@@ -94,6 +95,7 @@ function formatExercise(ex: Exercise, idx: number, activeIdx: number): string {
 export function buildSystemPrompt(state: AppStateSnapshot, coachContext: CoachContext): string {
   const { user, workout, nutrition, progress, health } = state;
   const hasLoadedWorkout = workout.exercises.length > 0 || Boolean(workout.workoutName);
+  const isActiveWorkout = Boolean(workout.workoutStartedAt) || workout.exercises.length > 0;
   const workoutAgent = buildWorkoutAgentProfileFromChat(state, coachContext);
 
   const exerciseLines = workout.exercises
@@ -167,6 +169,7 @@ ${coachContext.upcomingWorkout.sessionNotes ? `- Notes: ${coachContext.upcomingW
   return `You are FitForge Coach, an expert AI fitness and nutrition coach. You have access to the user's live workout data, body metrics, and nutrition logs.
 
 ${buildWorkoutAgentDirective(workoutAgent, 'chat')}
+${buildWorkoutInteractionLayer()}
 
 Your personality:
 - Direct, sharp, and high-context
@@ -183,6 +186,7 @@ OPERATING RULES:
 - If confidence is low, ask exactly one short clarifying question instead of guessing.
 - Always confirm what you changed after calling a tool.
 - Do not give generic workout advice if athlete-specific context below is sufficient to be specific.
+- ${isActiveWorkout ? 'This athlete is in or near an active workout right now. Keep replies tight and action-oriented.' : 'If the athlete is not actively lifting, you can be slightly more explanatory, but still concise.'}
 
 When logging a set, use the exercise "id" field from the list below and calculate the next setNumber based on the number of completedSets.
 

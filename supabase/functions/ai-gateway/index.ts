@@ -57,6 +57,39 @@ async function callAnthropic(payload: Record<string, unknown>) {
   return response.json();
 }
 
+async function callAnthropicWithFallback(
+  payload: Record<string, unknown>,
+  fallbackModel?: string
+) {
+  try {
+    return await callAnthropic(payload);
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error);
+    const requestedModel = typeof payload.model === 'string' ? payload.model : null;
+    const shouldFallback =
+      Boolean(fallbackModel) &&
+      requestedModel !== fallbackModel &&
+      (
+        message.includes('invalid_request_error') ||
+        message.includes('not_found_error') ||
+        message.includes('permission_error') ||
+        message.includes('model') ||
+        message.includes('not found') ||
+        message.includes('not available')
+      );
+
+    if (!shouldFallback) {
+      throw error;
+    }
+
+    console.warn(`Anthropic model fallback from ${requestedModel} to ${fallbackModel}: ${message}`);
+    return callAnthropic({
+      ...payload,
+      model: fallbackModel,
+    });
+  }
+}
+
 function resolveModel(modelPreference: unknown, task: unknown) {
   if (modelPreference === 'workout') {
     return ANTHROPIC_WORKOUT_MODEL;
@@ -209,13 +242,13 @@ Deno.serve(async (request) => {
 
     switch (task) {
       case 'chat': {
-        const data = await callAnthropic({
+        const data = await callAnthropicWithFallback({
           model,
           max_tokens: metadata.maxTokens,
           system: body.systemPrompt,
           tools: body.tools ?? [],
           messages: body.messages ?? [],
-        });
+        }, ANTHROPIC_DEFAULT_MODEL);
         const usage = getUsageMetrics(data);
         await logAIRequest({
           userId: user.id,
@@ -243,13 +276,13 @@ Deno.serve(async (request) => {
           content: body.toolResults ?? [],
         });
 
-        const data = await callAnthropic({
+        const data = await callAnthropicWithFallback({
           model,
           max_tokens: metadata.maxTokens,
           system: body.systemPrompt,
           tools: body.tools ?? [],
           messages,
-        });
+        }, ANTHROPIC_DEFAULT_MODEL);
         const usage = getUsageMetrics(data);
         await logAIRequest({
           userId: user.id,
@@ -270,12 +303,12 @@ Deno.serve(async (request) => {
       }
 
       case 'completion': {
-        const data = await callAnthropic({
+        const data = await callAnthropicWithFallback({
           model,
           max_tokens: metadata.maxTokens,
           system: body.systemPrompt,
           messages: [{ role: 'user', content: body.userMessage }],
-        });
+        }, ANTHROPIC_DEFAULT_MODEL);
         const text = (data.content ?? [])
           .filter((block: { type?: string }) => block.type === 'text')
           .map((block: { text?: string }) => block.text ?? '')
@@ -296,7 +329,7 @@ Deno.serve(async (request) => {
       }
 
       case 'vision': {
-        const data = await callAnthropic({
+        const data = await callAnthropicWithFallback({
           model,
           max_tokens: metadata.maxTokens,
           messages: [
@@ -318,7 +351,7 @@ Deno.serve(async (request) => {
               ],
             },
           ],
-        });
+        }, ANTHROPIC_DEFAULT_MODEL);
         const text = (data.content ?? [])
           .filter((block: { type?: string }) => block.type === 'text')
           .map((block: { text?: string }) => block.text ?? '')
