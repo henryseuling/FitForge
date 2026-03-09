@@ -528,6 +528,11 @@ function CompletionScreen({ onDone }: { onDone: () => void }) {
           },
         });
 
+        // Update goals after workout completion
+        import('@/lib/goalEngine').then(({ evaluateAndUpdateGoals }) =>
+          evaluateAndUpdateGoals().catch(() => {})
+        );
+
         // Also get classic post-workout analysis for the UI
         const classicAnalysis = await getPostWorkoutAnalysis({
           workoutName,

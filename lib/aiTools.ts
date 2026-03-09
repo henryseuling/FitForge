@@ -248,12 +248,13 @@ export const AI_TOOLS: AiTool[] = [
     input_schema: {
       type: 'object',
       properties: {
-        type: { type: 'string', description: 'Goal type, e.g. strength, weight, nutrition' },
+        type: { type: 'string', description: 'Goal type: weight, strength, frequency, nutrition, or habit' },
         title: { type: 'string', description: 'Goal title' },
         targetValue: { type: 'number', description: 'Target value' },
         currentValue: { type: 'number', description: 'Current value' },
         unit: { type: 'string', description: 'Unit, e.g. lb, kcal, workouts/week' },
         deadline: { type: 'string', description: 'Optional ISO date deadline' },
+        horizon: { type: 'string', enum: ['short', 'medium', 'long'], description: 'Goal horizon: short (1-2 weeks), medium (1-3 months), or long (3-6 months)' },
       },
       required: ['title', 'targetValue', 'unit'],
     },

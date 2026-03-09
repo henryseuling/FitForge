@@ -120,8 +120,9 @@ export function buildSystemPrompt(state: AppStateSnapshot, coachContext: CoachCo
     .map((memory) => `  [${memory.category}] ${memory.content}`)
     .join('\n');
 
+  const horizonLabel = (h: string) => h === 'short' ? 'week' : h === 'medium' ? 'month' : 'long-term';
   const goalLines = coachContext.goals
-    .map((goal) => `  ${goal.title}: ${goal.current_value}/${goal.target_value} ${goal.unit}`)
+    .map((goal) => `  [${horizonLabel(goal.horizon)}${goal.auto ? ', auto' : ''}] ${goal.title}: ${goal.current_value}/${goal.target_value} ${goal.unit}`)
     .join('\n');
 
   const profileLines = coachContext.exerciseProfiles

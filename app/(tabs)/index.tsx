@@ -627,6 +627,11 @@ export default function TrainScreen() {
     if (hasLoadedTrainData.current) return;
     hasLoadedTrainData.current = true;
 
+    // Fire-and-forget goal evaluation on app open
+    import('@/lib/goalEngine').then(({ evaluateAndUpdateGoals }) =>
+      evaluateAndUpdateGoals().catch(() => {})
+    );
+
     (async () => {
       try {
         const [history, draft] = await Promise.all([

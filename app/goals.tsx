@@ -16,7 +16,8 @@ import { useUserStore } from '@/stores/useUserStore';
 import { useProgressStore } from '@/stores/useProgressStore';
 import { useNutritionStore } from '@/stores/useNutritionStore';
 import { supabase } from '@/lib/supabase';
-import { fetchGoals, createGoal as apiCreateGoal, deleteGoal as apiDeleteGoal } from '@/lib/api';
+import { fetchActiveGoals, createGoal as apiCreateGoal, deleteGoal as apiDeleteGoal } from '@/lib/api';
+import { evaluateAndUpdateGoals, resetEvalCooldown, type GoalHorizon } from '@/lib/goalEngine';
 import * as Haptics from 'expo-haptics';
 import Svg, { Path, Circle, Rect } from 'react-native-svg';
 
@@ -26,21 +27,30 @@ import Svg, { Path, Circle, Rect } from 'react-native-svg';
 
 interface Goal {
   id: string;
-  type: 'weight' | 'strength' | 'frequency' | 'nutrition';
+  type: 'weight' | 'strength' | 'frequency' | 'nutrition' | 'habit';
   title: string;
   current: number;
   target: number;
   unit: string;
   deadline?: string;
+  horizon: GoalHorizon;
+  auto: boolean;
 }
 
 type GoalType = Goal['type'];
 
 const GOAL_TYPE_META: Record<GoalType, { label: string; color: string; mutedColor: string }> = {
-  weight: { label: 'Weight Target', color: colors.primary, mutedColor: colors.primaryMuted },
+  weight: { label: 'Weight', color: colors.primary, mutedColor: colors.primaryMuted },
   strength: { label: 'Strength', color: '#818CF8', mutedColor: 'rgba(129, 140, 248, 0.12)' },
   frequency: { label: 'Frequency', color: colors.success, mutedColor: colors.successMuted },
   nutrition: { label: 'Nutrition', color: colors.warning, mutedColor: 'rgba(251, 191, 36, 0.12)' },
+  habit: { label: 'Habit', color: '#A78BFA', mutedColor: 'rgba(167, 139, 250, 0.12)' },
+};
+
+const HORIZON_LABELS: Record<GoalHorizon, string> = {
+  short: 'This Week',
+  medium: 'This Month',
+  long: 'This Year',
 };
 
 const LIFT_OPTIONS = ['Bench Press', 'Squat', 'Deadlift', 'OHP'] as const;
@@ -91,6 +101,14 @@ function FlameIcon({ color }: { color: string }) {
   );
 }
 
+function RepeatIcon({ color }: { color: string }) {
+  return (
+    <Svg width={20} height={20} viewBox="0 0 24 24" fill="none">
+      <Path d="M17 1L21 5L17 9M3 11V9A4 4 0 017 5H21M7 23L3 19L7 15M21 13V15A4 4 0 0117 19H3" stroke={color} strokeWidth={1.5} strokeLinecap="round" strokeLinejoin="round" />
+    </Svg>
+  );
+}
+
 function PlusIcon() {
   return (
     <Svg width={20} height={20} viewBox="0 0 24 24" fill="none">
@@ -103,6 +121,14 @@ function TrashIcon() {
   return (
     <Svg width={16} height={16} viewBox="0 0 24 24" fill="none">
       <Path d="M3 6H21M8 6V4a2 2 0 012-2h4a2 2 0 012 2v2M19 6V20a2 2 0 01-2 2H7a2 2 0 01-2-2V6" stroke={colors.danger} strokeWidth={1.5} strokeLinecap="round" strokeLinejoin="round" />
+    </Svg>
+  );
+}
+
+function DismissIcon() {
+  return (
+    <Svg width={16} height={16} viewBox="0 0 24 24" fill="none">
+      <Path d="M18 6L6 18M6 6L18 18" stroke={colors.textTertiary} strokeWidth={1.5} strokeLinecap="round" strokeLinejoin="round" />
     </Svg>
   );
 }
@@ -121,6 +147,7 @@ function GoalIcon({ type, color }: { type: GoalType; color: string }) {
     case 'strength': return <DumbbellIcon color={color} />;
     case 'frequency': return <CalendarIcon color={color} />;
     case 'nutrition': return <FlameIcon color={color} />;
+    case 'habit': return <RepeatIcon color={color} />;
   }
 }
 
@@ -134,10 +161,7 @@ function generateId(): string {
 
 function getProgressPercent(current: number, target: number, type: GoalType): number {
   if (target === 0) return 0;
-  // For weight loss goals, progress is inverse
   if (type === 'weight' && target < current) {
-    // e.g. current 200, target 180 -> started at current, progress toward target
-    // We don't know start, so just show how close we are (0..100)
     const diff = current - target;
     if (diff <= 0) return 100;
     return Math.max(0, Math.min(100, (1 - diff / current) * 100));
@@ -145,12 +169,34 @@ function getProgressPercent(current: number, target: number, type: GoalType): nu
   return Math.max(0, Math.min(100, (current / target) * 100));
 }
 
+function mapGoalFromDb(g: any): Goal {
+  return {
+    id: g.id,
+    type: g.type || 'frequency',
+    title: g.title || '',
+    current: g.current_value || 0,
+    target: g.target_value || 0,
+    unit: g.unit || '',
+    deadline: g.deadline || undefined,
+    horizon: g.horizon || 'medium',
+    auto: g.auto || false,
+  };
+}
+
 // ---------------------------------------------------------------------------
 // Sub-components
 // ---------------------------------------------------------------------------
 
-function GoalCard({ goal, onDelete }: { goal: Goal; onDelete: (id: string) => void }) {
-  const meta = GOAL_TYPE_META[goal.type];
+function GoalCard({
+  goal,
+  onDelete,
+  onDismiss,
+}: {
+  goal: Goal;
+  onDelete: (id: string) => void;
+  onDismiss: (id: string) => void;
+}) {
+  const meta = GOAL_TYPE_META[goal.type] || GOAL_TYPE_META.frequency;
   const progress = getProgressPercent(goal.current, goal.target, goal.type);
   const isComplete = progress >= 100;
 
@@ -163,7 +209,7 @@ function GoalCard({ goal, onDelete }: { goal: Goal; onDelete: (id: string) => vo
       padding: 16,
       gap: 14,
     }}>
-      {/* Top row: icon + title + delete */}
+      {/* Top row: icon + title + badges + action */}
       <View style={{ flexDirection: 'row', alignItems: 'center', gap: 12 }}>
         <View style={{
           width: 40, height: 40, borderRadius: 12,
@@ -173,9 +219,20 @@ function GoalCard({ goal, onDelete }: { goal: Goal; onDelete: (id: string) => vo
           <GoalIcon type={goal.type} color={meta.color} />
         </View>
         <View style={{ flex: 1, gap: 2 }}>
-          <Text style={{ fontFamily: 'DMSans-SemiBold', fontSize: 15, color: colors.textPrimary }}>
-            {goal.title}
-          </Text>
+          <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
+            <Text style={{ fontFamily: 'DMSans-SemiBold', fontSize: 15, color: colors.textPrimary, flexShrink: 1 }} numberOfLines={1}>
+              {goal.title}
+            </Text>
+            {goal.auto && (
+              <View style={{
+                backgroundColor: 'rgba(167, 139, 250, 0.12)',
+                borderRadius: 100,
+                paddingHorizontal: 7, paddingVertical: 1,
+              }}>
+                <Text style={{ fontFamily: 'DMSans-Medium', fontSize: 10, color: '#A78BFA' }}>Auto</Text>
+              </View>
+            )}
+          </View>
           {goal.deadline ? (
             <Text style={{ fontFamily: 'DMSans', fontSize: 12, color: colors.textTertiary }}>
               Target: {goal.deadline}
@@ -190,6 +247,21 @@ function GoalCard({ goal, onDelete }: { goal: Goal; onDelete: (id: string) => vo
           }}>
             <CheckIcon />
           </View>
+        ) : goal.auto ? (
+          <Pressable
+            onPress={() => {
+              Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+              onDismiss(goal.id);
+            }}
+            hitSlop={8}
+            style={{
+              width: 28, height: 28, borderRadius: 14,
+              backgroundColor: 'rgba(255, 255, 255, 0.04)',
+              alignItems: 'center', justifyContent: 'center',
+            }}
+          >
+            <DismissIcon />
+          </Pressable>
         ) : (
           <Pressable
             onPress={() => {
@@ -254,6 +326,7 @@ function AddGoalForm({ onSave, onCancel }: { onSave: (goal: Goal) => void; onCan
   const nutrition = useNutritionStore();
 
   const [goalType, setGoalType] = useState<GoalType>('weight');
+  const [horizon, setHorizon] = useState<GoalHorizon>('medium');
   const [targetValue, setTargetValue] = useState('');
   const [selectedLift, setSelectedLift] = useState<typeof LIFT_OPTIONS[number]>('Bench Press');
   const [deadline, setDeadline] = useState('');
@@ -263,12 +336,12 @@ function AddGoalForm({ onSave, onCancel }: { onSave: (goal: Goal) => void; onCan
 
     let goal: Goal;
     const id = generateId();
+    const base = { horizon, auto: false };
 
     switch (goalType) {
       case 'weight':
         goal = {
-          id,
-          type: 'weight',
+          id, type: 'weight', ...base,
           title: 'Weight Target',
           current: progress.weight || user.weight || 0,
           target: parseFloat(targetValue) || 0,
@@ -279,8 +352,7 @@ function AddGoalForm({ onSave, onCancel }: { onSave: (goal: Goal) => void; onCan
       case 'strength': {
         const existingLift = progress.keyLifts.find((l) => l.name === selectedLift);
         goal = {
-          id,
-          type: 'strength',
+          id, type: 'strength', ...base,
           title: `${selectedLift} PR`,
           current: existingLift?.weight || 0,
           target: parseFloat(targetValue) || 0,
@@ -291,8 +363,7 @@ function AddGoalForm({ onSave, onCancel }: { onSave: (goal: Goal) => void; onCan
       }
       case 'frequency':
         goal = {
-          id,
-          type: 'frequency',
+          id, type: 'frequency', ...base,
           title: 'Weekly Workouts',
           current: progress.streak || 0,
           target: parseInt(targetValue) || 0,
@@ -302,12 +373,21 @@ function AddGoalForm({ onSave, onCancel }: { onSave: (goal: Goal) => void; onCan
         break;
       case 'nutrition':
         goal = {
-          id,
-          type: 'nutrition',
+          id, type: 'nutrition', ...base,
           title: 'Daily Calories',
           current: nutrition.totalCalories(),
           target: parseInt(targetValue) || 0,
           unit: 'kcal',
+          deadline: deadline || undefined,
+        };
+        break;
+      case 'habit':
+        goal = {
+          id, type: 'habit', ...base,
+          title: targetValue || 'Build consistency',
+          current: 0,
+          target: 7,
+          unit: 'days',
           deadline: deadline || undefined,
         };
         break;
@@ -316,7 +396,7 @@ function AddGoalForm({ onSave, onCancel }: { onSave: (goal: Goal) => void; onCan
     onSave(goal);
   };
 
-  const typeOptions: GoalType[] = ['weight', 'strength', 'frequency', 'nutrition'];
+  const typeOptions: GoalType[] = ['weight', 'strength', 'frequency', 'nutrition', 'habit'];
 
   return (
     <View style={{
@@ -335,6 +415,44 @@ function AddGoalForm({ onSave, onCancel }: { onSave: (goal: Goal) => void; onCan
         <Pressable onPress={onCancel} hitSlop={8}>
           <Text style={{ fontFamily: 'DMSans-SemiBold', fontSize: 14, color: colors.textTertiary }}>Cancel</Text>
         </Pressable>
+      </View>
+
+      {/* Horizon selector */}
+      <View style={{ gap: 8 }}>
+        <Text style={{ fontFamily: 'DMSans-Medium', fontSize: 11, color: colors.textTertiary, textTransform: 'uppercase', letterSpacing: 0.7 }}>
+          Timeframe
+        </Text>
+        <View style={{ flexDirection: 'row', gap: 8 }}>
+          {(['short', 'medium', 'long'] as GoalHorizon[]).map((h) => {
+            const selected = horizon === h;
+            return (
+              <Pressable
+                key={h}
+                onPress={() => {
+                  Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+                  setHorizon(h);
+                }}
+                style={{
+                  flex: 1,
+                  paddingVertical: 10,
+                  borderRadius: radius.md,
+                  alignItems: 'center',
+                  backgroundColor: selected ? colors.primaryMuted : colors.elevated,
+                  borderWidth: 1,
+                  borderColor: selected ? colors.primary + '40' : 'transparent',
+                }}
+              >
+                <Text style={{
+                  fontFamily: selected ? 'DMSans-SemiBold' : 'DMSans',
+                  fontSize: 13,
+                  color: selected ? colors.primary : colors.textSecondary,
+                }}>
+                  {HORIZON_LABELS[h]}
+                </Text>
+              </Pressable>
+            );
+          })}
+        </View>
       </View>
 
       {/* Goal type selector */}
@@ -538,24 +656,48 @@ function AddGoalForm({ onSave, onCancel }: { onSave: (goal: Goal) => void; onCan
         </View>
       )}
 
+      {goalType === 'habit' && (
+        <View style={{ gap: 12 }}>
+          <View style={{ gap: 6 }}>
+            <Text style={{ fontFamily: 'DMSans-Medium', fontSize: 11, color: colors.textTertiary, textTransform: 'uppercase', letterSpacing: 0.7 }}>
+              Habit Description
+            </Text>
+            <TextInput
+              value={targetValue}
+              onChangeText={setTargetValue}
+              placeholder="e.g. Log meals every day"
+              placeholderTextColor={colors.textTertiary}
+              style={{
+                fontFamily: 'DMSans', fontSize: 15, color: colors.textPrimary,
+                backgroundColor: colors.elevated, borderRadius: radius.md,
+                paddingHorizontal: 16, paddingVertical: 14,
+                borderWidth: 1, borderColor: colors.borderLight,
+              }}
+            />
+          </View>
+        </View>
+      )}
+
       {/* Deadline */}
-      <View style={{ gap: 6 }}>
-        <Text style={{ fontFamily: 'DMSans-Medium', fontSize: 11, color: colors.textTertiary, textTransform: 'uppercase', letterSpacing: 0.7 }}>
-          Target Date (optional)
-        </Text>
-        <TextInput
-          value={deadline}
-          onChangeText={setDeadline}
-          placeholder="e.g. March 2026"
-          placeholderTextColor={colors.textTertiary}
-          style={{
-            fontFamily: 'DMSans', fontSize: 15, color: colors.textPrimary,
-            backgroundColor: colors.elevated, borderRadius: radius.md,
-            paddingHorizontal: 16, paddingVertical: 14,
-            borderWidth: 1, borderColor: colors.borderLight,
-          }}
-        />
-      </View>
+      {goalType !== 'habit' && (
+        <View style={{ gap: 6 }}>
+          <Text style={{ fontFamily: 'DMSans-Medium', fontSize: 11, color: colors.textTertiary, textTransform: 'uppercase', letterSpacing: 0.7 }}>
+            Target Date (optional)
+          </Text>
+          <TextInput
+            value={deadline}
+            onChangeText={setDeadline}
+            placeholder="e.g. March 2026"
+            placeholderTextColor={colors.textTertiary}
+            style={{
+              fontFamily: 'DMSans', fontSize: 15, color: colors.textPrimary,
+              backgroundColor: colors.elevated, borderRadius: radius.md,
+              paddingHorizontal: 16, paddingVertical: 14,
+              borderWidth: 1, borderColor: colors.borderLight,
+            }}
+          />
+        </View>
+      )}
 
       {/* Save button */}
       <Pressable
@@ -618,27 +760,29 @@ function EmptyState() {
 export default function GoalsScreen() {
   const [goals, setGoals] = useState<Goal[]>([]);
   const [showForm, setShowForm] = useState(false);
+  const [loading, setLoading] = useState(true);
 
-  // Load goals from Supabase on mount
+  // Load goals + run goal engine on mount
   useEffect(() => {
+    let cancelled = false;
     (async () => {
       try {
         const { data: { user } } = await supabase.auth.getUser();
-        if (!user) return;
-        const data = await fetchGoals();
-        if (data && data.length > 0) {
-          setGoals(data.map((g: any) => ({
-            id: g.id,
-            type: g.type,
-            title: g.title,
-            current: g.current_value || 0,
-            target: g.target_value || 0,
-            unit: g.unit || '',
-            deadline: g.deadline || undefined,
-          })));
+        if (!user || cancelled) return;
+
+        // Run goal engine first (creates auto-goals if needed, updates progress)
+        await evaluateAndUpdateGoals().catch(() => {});
+
+        // Then fetch the latest state
+        const data = await fetchActiveGoals();
+        if (!cancelled && data) {
+          setGoals(data.map(mapGoalFromDb));
         }
-      } catch {}
+      } catch {} finally {
+        if (!cancelled) setLoading(false);
+      }
     })();
+    return () => { cancelled = true; };
   }, []);
 
   const handleAddGoal = useCallback(async (goal: Goal) => {
@@ -651,13 +795,12 @@ export default function GoalsScreen() {
         current_value: goal.current,
         unit: goal.unit,
         deadline: goal.deadline || undefined,
+        horizon: goal.horizon,
+        auto: false,
       });
       setGoals((prev) => [
         ...prev,
-        {
-          ...goal,
-          id: created.id,
-        },
+        { ...goal, id: created.id },
       ]);
     } catch {}
   }, []);
@@ -670,7 +813,28 @@ export default function GoalsScreen() {
     } catch {}
   }, []);
 
+  const handleDismissGoal = useCallback(async (id: string) => {
+    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
+    setGoals((prev) => prev.filter((g) => g.id !== id));
+    try {
+      await apiDeleteGoal(id);
+      // Force re-evaluation to generate a replacement
+      resetEvalCooldown();
+      const result = await evaluateAndUpdateGoals();
+      if (result) {
+        setGoals(result.map(mapGoalFromDb));
+      }
+    } catch {}
+  }, []);
+
   const completedCount = goals.filter((g) => getProgressPercent(g.current, g.target, g.type) >= 100).length;
+
+  // Group by horizon
+  const goalsByHorizon = (['short', 'medium', 'long'] as GoalHorizon[]).map((h) => ({
+    horizon: h,
+    label: HORIZON_LABELS[h],
+    goals: goals.filter((g) => g.horizon === h),
+  })).filter((group) => group.goals.length > 0);
 
   return (
     <SafeAreaView style={{ flex: 1, backgroundColor: colors.bg }}>
@@ -748,7 +912,7 @@ export default function GoalsScreen() {
                 </Svg>
                 <Text style={{
                   position: 'absolute',
-                  fontFamily: 'JetBrainsMono-ExtraBold', fontSize: 14, color: colors.textPrimary,
+                  fontFamily: 'JetBrainsMono-Bold', fontSize: 14, color: colors.textPrimary,
                 }}>
                   {Math.round((completedCount / goals.length) * 100)}%
                 </Text>
@@ -767,25 +931,25 @@ export default function GoalsScreen() {
             </View>
           )}
 
-          {/* Active goals section */}
-          {goals.length > 0 && (
-            <View style={{ gap: 10 }}>
+          {/* Goals grouped by horizon */}
+          {goalsByHorizon.map(({ horizon, label, goals: horizonGoals }) => (
+            <View key={horizon} style={{ gap: 10 }}>
               <Text style={{
                 fontFamily: 'DMSans-Medium', fontSize: 11,
                 color: colors.textTertiary,
                 textTransform: 'uppercase', letterSpacing: 0.7,
                 paddingLeft: 4,
               }}>
-                Active Goals
+                {label}
               </Text>
-              {goals.map((goal) => (
-                <GoalCard key={goal.id} goal={goal} onDelete={handleDeleteGoal} />
+              {horizonGoals.map((goal) => (
+                <GoalCard key={goal.id} goal={goal} onDelete={handleDeleteGoal} onDismiss={handleDismissGoal} />
               ))}
             </View>
-          )}
+          ))}
 
           {/* Empty state */}
-          {goals.length === 0 && !showForm && <EmptyState />}
+          {goals.length === 0 && !showForm && !loading && <EmptyState />}
 
           {/* Add Goal form */}
           {showForm && (

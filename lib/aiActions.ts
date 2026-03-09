@@ -349,10 +349,11 @@ const TOOL_HANDLERS: Record<string, ToolHandler> = {
     const currentValue = asNumber(input.currentValue) ?? 0;
     const unit = asString(input.unit);
     const deadline = asString(input.deadline);
+    const horizon = asString(input.horizon) || 'medium';
     if (!title || targetValue === null || !unit) throw new Error('Missing goal fields');
     const goal = await createGoal({
       title, type, target_value: targetValue, current_value: currentValue,
-      unit, deadline: deadline || undefined,
+      unit, deadline: deadline || undefined, horizon,
     });
     return successResult(`Created goal: ${title}.`, { id: goal.id, title }, {
       undo: { kind: 'delete_goal', payload: { goalId: goal.id }, label: 'Undo goal' },

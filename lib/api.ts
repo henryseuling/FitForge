@@ -485,7 +485,7 @@ export async function fetchGoals() {
   return data ?? [];
 }
 
-export async function createGoal(goal: { type: string; title: string; target_value: number; current_value: number; unit: string; deadline?: string }) {
+export async function createGoal(goal: { type: string; title: string; target_value: number; current_value: number; unit: string; deadline?: string; horizon?: string; auto?: boolean }) {
   const { data: { user } } = await supabase.auth.getUser();
   if (!user) throw new Error('Not authenticated');
 
@@ -512,6 +512,36 @@ export async function deleteGoal(goalId: string) {
     .delete()
     .eq('id', goalId);
   if (error) throw error;
+}
+
+export async function updateGoalProgress(goalId: string, currentValue: number) {
+  const { error } = await supabase
+    .from('goals')
+    .update({ current_value: currentValue, updated_at: new Date().toISOString() })
+    .eq('id', goalId);
+  if (error) throw error;
+}
+
+export async function completeGoal(goalId: string) {
+  const { error } = await supabase
+    .from('goals')
+    .update({ completed_at: new Date().toISOString(), updated_at: new Date().toISOString() })
+    .eq('id', goalId);
+  if (error) throw error;
+}
+
+export async function fetchActiveGoals() {
+  const { data: { user } } = await supabase.auth.getUser();
+  if (!user) throw new Error('Not authenticated');
+
+  const { data, error } = await supabase
+    .from('goals')
+    .select('*')
+    .eq('user_id', user.id)
+    .is('completed_at', null)
+    .order('created_at', { ascending: true });
+  if (error) throw error;
+  return data ?? [];
 }
 
 // ============================================

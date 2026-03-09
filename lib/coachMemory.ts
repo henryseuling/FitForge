@@ -22,6 +22,8 @@ export interface CoachContext {
     target_value: number;
     unit: string;
     type: string;
+    horizon: string;
+    auto: boolean;
   }>;
   exerciseProfiles: Array<{
     exercise_name: string;
@@ -82,6 +84,8 @@ export async function buildCoachContext(): Promise<CoachContext> {
       target_value: goal.target_value || 0,
       unit: goal.unit || '',
       type: goal.type || 'goal',
+      horizon: goal.horizon || 'medium',
+      auto: goal.auto || false,
     })),
     exerciseProfiles: exerciseProfiles
       .filter((profile: any) => profile.exercise_name)
