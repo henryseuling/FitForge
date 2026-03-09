@@ -11,7 +11,7 @@ import {
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { router } from 'expo-router';
 import * as Haptics from 'expo-haptics';
-import Svg, { Path, Circle } from 'react-native-svg';
+import Svg, { Path } from 'react-native-svg';
 import { colors } from '@/lib/theme';
 import { saveHealthSnapshot } from '@/lib/api';
 import { useUserStore } from '@/stores/useUserStore';
@@ -489,13 +489,6 @@ export default function EditHealthScreen() {
     </Svg>
   );
 
-  const ouraRingIcon = (
-    <Svg width={20} height={20} viewBox="0 0 24 24" fill="none">
-      <Circle cx={12} cy={12} r={8} stroke={colors.danger} strokeWidth={2} />
-      <Circle cx={12} cy={12} r={4} stroke={colors.danger} strokeWidth={2} />
-    </Svg>
-  );
-
   return (
     <SafeAreaView style={{ flex: 1, backgroundColor: colors.bg }}>
       {/* Header */}
@@ -695,23 +688,6 @@ export default function EditHealthScreen() {
             loading={appleHealthLoading}
           />
 
-          <View
-            style={{
-              borderRadius: 12,
-              backgroundColor: colors.elevated,
-              borderWidth: 1,
-              borderColor: 'rgba(255,255,255,0.04)',
-              padding: 14,
-              gap: 6,
-            }}
-          >
-            <Text style={{ fontFamily: 'DMSans-SemiBold', fontSize: 14, color: colors.textPrimary }}>
-              Oura Ring
-            </Text>
-            <Text style={{ fontFamily: 'DMSans', fontSize: 12, color: colors.textSecondary, lineHeight: 18 }}>
-              Apple Health is the active recovery source for FitForge. Oura is not part of the live recovery pipeline right now.
-            </Text>
-          </View>
         </View>
 
         {/* Permissions Info */}
@@ -860,16 +836,6 @@ export default function EditHealthScreen() {
             FitForge currently uses Apple Health as the primary recovery source. Readiness, recovery, HRV, resting heart rate, and sleep context should come from HealthKit once permission and syncing are working.
           </Text>
 
-          <Text
-            style={{
-              fontFamily: 'DMSans',
-              fontSize: 12,
-              color: colors.textTertiary,
-              marginTop: 4,
-            }}
-          >
-            Oura is not part of the live recovery pipeline right now.
-          </Text>
         </View>
 
         {/* Integration Status Summary */}
