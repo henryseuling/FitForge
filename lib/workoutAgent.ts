@@ -57,7 +57,7 @@ type AgentAppState = {
     trainingSplit: string;
   };
   workout: {
-    readinessScore: number;
+    readinessScore: number | null;
   };
   progress: {
     keyLifts: Array<{ name: string; weight: number; unit: string; delta: number }>;

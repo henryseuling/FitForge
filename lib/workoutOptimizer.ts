@@ -29,6 +29,13 @@ type HealthSnapshot = {
   recovery_score?: number | null;
 };
 
+type PlannerContext = {
+  daysSinceLastWorkout: number | null;
+  recentMuscleFatigue: Map<MuscleGroup, number>;
+  returningFromLayoff: boolean;
+  lastWorkoutName: string;
+};
+
 export interface WorkoutOptimizationRequest {
   instruction?: string;
   desiredFocus?: string;
@@ -78,6 +85,17 @@ const FOCUS_MUSCLES: Record<string, MuscleGroup[]> = {
   'recovery': ['core'],
 };
 
+const FOCUS_PATTERN_TEMPLATES: Record<string, string[]> = {
+  push: ['chest_press', 'shoulder_press', 'chest_isolation', 'shoulder_isolation', 'tricep_isolation'],
+  pull: ['row', 'vertical_pull', 'shoulder_isolation', 'curl', 'hinge'],
+  legs: ['squat', 'hinge', 'unilateral_leg', 'hamstring_isolation', 'calves', 'core'],
+  upper: ['chest_press', 'row', 'vertical_pull', 'shoulder_press', 'shoulder_isolation', 'curl', 'tricep_isolation'],
+  lower: ['squat', 'hinge', 'unilateral_leg', 'hamstring_isolation', 'quad_isolation', 'calves', 'core'],
+  'full body': ['squat', 'chest_press', 'row', 'hinge', 'vertical_pull', 'core'],
+  shoulders: ['shoulder_press', 'shoulder_isolation', 'row', 'tricep_isolation'],
+  arms: ['curl', 'tricep_isolation', 'shoulder_isolation'],
+};
+
 const EQUIPMENT_ALIASES: Record<string, EquipmentType> = {
   bodyweight: 'bodyweight',
   dumbbell: 'dumbbells',
@@ -124,8 +142,22 @@ function inferGoalMode(goals: string[]) {
   return 'general';
 }
 
-function inferNextFocus(trainingSplit: string, history: WorkoutHistoryEntry[], desiredFocus?: string): string {
+function inferNextFocus(
+  trainingSplit: string,
+  history: WorkoutHistoryEntry[],
+  desiredFocus?: string,
+  plannerContext?: PlannerContext,
+  readiness = 70
+): string {
   if (desiredFocus?.trim()) return desiredFocus.trim();
+
+  if (plannerContext?.returningFromLayoff) {
+    return trainingSplit === '3-Day Full Body' ? 'Full Body A' : 'Full Body';
+  }
+
+  if (readiness <= 40) {
+    return 'Recovery';
+  }
 
   const rotation = SPLIT_ROTATIONS[trainingSplit] || [];
   if (rotation.length > 0) {
@@ -145,6 +177,62 @@ function focusToMuscles(focus: string): MuscleGroup[] {
     if (normalized.includes(key)) return muscles;
   }
   return ['chest', 'back', 'quadriceps', 'shoulders'];
+}
+
+function focusToPatternTemplate(focus: string): string[] {
+  const normalized = focus.toLowerCase();
+  for (const [key, patterns] of Object.entries(FOCUS_PATTERN_TEMPLATES)) {
+    if (normalized.includes(key)) return patterns;
+  }
+  return FOCUS_PATTERN_TEMPLATES['full body'];
+}
+
+function daysBetween(dateA: string | null | undefined, dateB: Date) {
+  if (!dateA) return null;
+  const parsed = new Date(dateA);
+  if (Number.isNaN(parsed.getTime())) return null;
+  const diff = dateB.getTime() - parsed.getTime();
+  return Math.max(0, Math.floor(diff / 86_400_000));
+}
+
+function inferWorkoutMuscles(workout: WorkoutHistoryEntry): MuscleGroup[] {
+  const muscles = new Set<MuscleGroup>();
+  for (const exercise of workout.exercises || []) {
+    const name = normalizeName(exercise.name || exercise.exercise_name || '');
+    const muscle = normalizeName(exercise.muscle_group || '') as MuscleGroup;
+    if (muscle) {
+      muscles.add(muscle);
+      continue;
+    }
+    muscles.add(inferMuscleGroupFromName(name));
+  }
+  return Array.from(muscles);
+}
+
+function buildPlannerContext(history: WorkoutHistoryEntry[]): PlannerContext {
+  const now = new Date();
+  const daysSinceLastWorkout = daysBetween(history[0]?.started_at, now);
+  const recentMuscleFatigue = new Map<MuscleGroup, number>();
+
+  history.slice(0, 3).forEach((workout, index) => {
+    const recencyMultiplier = index === 0 ? 1.6 : index === 1 ? 1.0 : 0.6;
+    const daysAgo = daysBetween(workout.started_at, now) ?? 7;
+    const freshnessPenalty = daysAgo <= 1 ? 1.3 : daysAgo <= 3 ? 1.0 : 0.5;
+
+    inferWorkoutMuscles(workout).forEach((muscle) => {
+      recentMuscleFatigue.set(
+        muscle,
+        (recentMuscleFatigue.get(muscle) ?? 0) + recencyMultiplier * freshnessPenalty
+      );
+    });
+  });
+
+  return {
+    daysSinceLastWorkout,
+    recentMuscleFatigue,
+    returningFromLayoff: (daysSinceLastWorkout ?? 0) >= 6,
+    lastWorkoutName: history[0]?.name || history[0]?.split_type || '',
+  };
 }
 
 function recentExerciseNames(history: WorkoutHistoryEntry[], limit = 2) {
@@ -176,6 +264,38 @@ function inferMovementPattern(exercise: ExerciseDefinition): string {
   return `${exercise.primaryMuscle}_${exercise.movementType}`;
 }
 
+function inferMovementPatternFromName(name: string): string {
+  return inferMovementPattern({
+    id: `derived-${normalizeName(name).replace(/[^a-z0-9]+/g, '-')}`,
+    name,
+    primaryMuscle: inferMuscleGroupFromName(name),
+    secondaryMuscles: [],
+    equipment: [],
+    movementType: /curl|extension|raise|fly|calf|core/i.test(name) ? 'isolation' : 'compound',
+    category: 'strength',
+    difficulty: 'intermediate',
+    instructions: '',
+    tips: '',
+    defaultSets: 3,
+    defaultReps: '8-10',
+  });
+}
+
+function inferMuscleGroupFromName(name: string): MuscleGroup {
+  const normalized = normalizeName(name);
+  if (/(bench|chest|fly|dip|push-up|push up)/.test(normalized)) return 'chest';
+  if (/(row|pull|lat|back)/.test(normalized)) return 'back';
+  if (/(shoulder|overhead press|lateral raise|rear delt|face pull)/.test(normalized)) return 'shoulders';
+  if (/(curl|bicep|forearm)/.test(normalized)) return 'biceps';
+  if (/(tricep|pushdown|extension|skull crusher)/.test(normalized)) return 'triceps';
+  if (/(squat|leg press|quad|lunge|split squat)/.test(normalized)) return 'quadriceps';
+  if (/(deadlift|rdl|hamstring|leg curl)/.test(normalized)) return 'hamstrings';
+  if (/(hip thrust|glute)/.test(normalized)) return 'glutes';
+  if (/(calf)/.test(normalized)) return 'calves';
+  if (/(core|ab|crunch|plank)/.test(normalized)) return 'core';
+  return 'chest';
+}
+
 function buildExerciseScore(params: {
   exercise: ExerciseDefinition;
   profiles: ExerciseProfile[];
@@ -185,14 +305,28 @@ function buildExerciseScore(params: {
   preferredExercises: string[];
   recentExercises: string[];
   experience: string;
+  recentMuscleFatigue: Map<MuscleGroup, number>;
+  focus: string;
 }) {
-  const { exercise, profiles, favorites, dislikes, avoidExercises, preferredExercises, recentExercises, experience } = params;
+  const {
+    exercise,
+    profiles,
+    favorites,
+    dislikes,
+    avoidExercises,
+    preferredExercises,
+    recentExercises,
+    experience,
+    recentMuscleFatigue,
+    focus,
+  } = params;
   const name = normalizeName(exercise.name);
   const profile = profiles.find((item) => normalizeName(item.exercise_name) === name || normalizeName(item.exercise_id) === normalizeName(exercise.id));
 
   if (matchesAny(exercise.name, [...dislikes, ...avoidExercises])) return -100;
 
   let score = 0;
+  const fatiguePenalty = recentMuscleFatigue.get(exercise.primaryMuscle) ?? 0;
   score += exercise.movementType === 'compound' ? 6 : 2;
   score += exercise.difficulty === 'beginner' && experience.toLowerCase().includes('beginner') ? 3 : 0;
   score += exercise.difficulty !== 'advanced' && !experience.toLowerCase().includes('advanced') ? 1 : 0;
@@ -202,6 +336,8 @@ function buildExerciseScore(params: {
   score += matchesAny(exercise.name, favorites) ? 3 : 0;
   score += matchesAny(exercise.name, preferredExercises) ? 4 : 0;
   score -= recentExercises.includes(name) ? 4 : 0;
+  score -= fatiguePenalty >= 2.4 && !normalizeName(focus).includes(exercise.primaryMuscle) ? 4 : 0;
+  score -= fatiguePenalty >= 1.4 ? 1 : 0;
   score += profile?.total_times_performed ? Math.min(profile.total_times_performed, 4) : 0;
   return score;
 }
@@ -217,11 +353,13 @@ function selectExercises(params: {
   preferredExercises: string[];
   avoidExercises: string[];
   availableTime: number;
+  plannerContext: PlannerContext;
 }) {
   const recentExercises = recentExerciseNames(params.history, 2);
   const favorites = params.profiles.filter((profile) => profile.is_favorite).map((profile) => profile.exercise_name || '');
   const dislikes = params.profiles.filter((profile) => profile.is_disliked).map((profile) => profile.exercise_name || '');
   const goalMode = inferGoalMode(params.goals);
+  const patternTemplate = focusToPatternTemplate(params.focus);
 
   const pool = EXERCISES
     .filter((exercise) =>
@@ -238,6 +376,8 @@ function selectExercises(params: {
         preferredExercises: params.preferredExercises,
         recentExercises,
         experience: params.experience,
+        recentMuscleFatigue: params.plannerContext.recentMuscleFatigue,
+        focus: params.focus,
       }) -
       buildExerciseScore({
         exercise: a,
@@ -248,13 +388,29 @@ function selectExercises(params: {
         preferredExercises: params.preferredExercises,
         recentExercises,
         experience: params.experience,
+        recentMuscleFatigue: params.plannerContext.recentMuscleFatigue,
+        focus: params.focus,
       })
     );
 
-  const exerciseCount = params.availableTime <= 40 ? 4 : params.availableTime <= 55 ? 5 : 6;
+  const exerciseCount = params.availableTime <= 35 ? 4 : params.availableTime <= 50 ? 5 : 6;
   const selected: ExerciseDefinition[] = [];
   const covered = new Set<string>();
   const usedPatterns = new Set<string>();
+
+  for (const targetPattern of patternTemplate) {
+    if (selected.length >= exerciseCount) break;
+    const candidate = pool.find((exercise) => {
+      const pattern = inferMovementPattern(exercise);
+      return !usedPatterns.has(pattern) && pattern === targetPattern;
+    });
+
+    if (candidate) {
+      selected.push(candidate);
+      covered.add(candidate.primaryMuscle);
+      usedPatterns.add(inferMovementPattern(candidate));
+    }
+  }
 
   for (const exercise of pool) {
     if (selected.length >= exerciseCount) break;
@@ -282,30 +438,37 @@ function prescriptionForExercise(
   goalMode: string,
   readiness: number,
   progressiveOverload: boolean,
-  intensity: WorkoutOptimizationRequest['intensity']
+  intensity: WorkoutOptimizationRequest['intensity'],
+  plannerContext: PlannerContext
 ): OptimizedWorkoutExercise {
   const isCompound = exercise.movementType === 'compound';
   const readinessModifier = readiness >= 80 ? 1.03 : readiness <= 55 ? 0.94 : 1;
   const intensityModifier = intensity === 'hard' ? 1.03 : intensity === 'easy' ? 0.92 : 1;
   const progressionModifier = progressiveOverload ? 1.02 : 1;
+  const layoffModifier = plannerContext.returningFromLayoff ? 0.92 : 1;
+  const localFatiguePenalty = (plannerContext.recentMuscleFatigue.get(exercise.primaryMuscle) ?? 0) >= 2 ? 0.96 : 1;
 
   const baseWeight =
     profile?.current_working_weight ??
     (profile?.estimated_1rm ? Math.round(profile.estimated_1rm * (isCompound ? 0.72 : 0.58)) : 0);
 
   const prescribedWeight = baseWeight > 0
-    ? Math.max(0, Math.round(baseWeight * readinessModifier * intensityModifier * progressionModifier))
+    ? Math.max(0, Math.round(baseWeight * readinessModifier * intensityModifier * progressionModifier * layoffModifier * localFatiguePenalty))
     : 0;
+  const baseSets = plannerContext.returningFromLayoff ? (isCompound ? 3 : 2) : isCompound ? 4 : 3;
+  const easySets = Math.max(2, baseSets - 1);
 
   if (goalMode === 'strength') {
     return {
       exercise: exercise.name,
       exerciseId: exercise.id,
       muscleGroup: exercise.primaryMuscle,
-      sets: isCompound ? 4 : 3,
+      sets: intensity === 'easy' || readiness < 55 ? easySets : baseSets,
       reps: isCompound ? '4-6' : '8-10',
       weight: prescribedWeight,
-      note: isCompound ? 'Primary strength lift' : 'Accessory strength support',
+      note: plannerContext.returningFromLayoff
+        ? 'Re-entry strength work. Leave reps in reserve and rebuild rhythm.'
+        : isCompound ? 'Primary strength lift' : 'Accessory strength support',
     };
   }
 
@@ -314,7 +477,7 @@ function prescriptionForExercise(
       exercise: exercise.name,
       exerciseId: exercise.id,
       muscleGroup: exercise.primaryMuscle,
-      sets: 3,
+      sets: intensity === 'easy' || readiness < 55 ? 2 : 3,
       reps: isCompound ? '8-10' : '12-15',
       weight: prescribedWeight,
       note: 'Keep rest short and move with intent',
@@ -325,10 +488,12 @@ function prescriptionForExercise(
     exercise: exercise.name,
     exerciseId: exercise.id,
     muscleGroup: exercise.primaryMuscle,
-    sets: isCompound ? 4 : 3,
+    sets: intensity === 'easy' || readiness < 55 ? easySets : baseSets,
     reps: isCompound ? '6-8' : '10-12',
     weight: prescribedWeight,
-    note: isCompound ? 'Use a controlled top set and back-off quality' : 'Chase clean volume',
+    note: plannerContext.returningFromLayoff
+      ? 'Re-entry volume. Crisp reps, conservative loading, no grinders.'
+      : isCompound ? 'Use a controlled top set and back-off quality' : 'Chase clean volume',
   };
 }
 
@@ -348,8 +513,16 @@ export async function generateOptimizedWorkoutPlan(request: WorkoutOptimizationR
   const experience = String(userProfile.level || 'intermediate');
   const progressiveOverload = userProfile.progressive_overload ?? userProfile.progressiveOverload ?? true;
   const availableTime = request.availableTime ?? userProfile.session_duration ?? userProfile.sessionDuration ?? 60;
+  const plannerContext = buildPlannerContext(workoutHistory as WorkoutHistoryEntry[]);
+  const readiness = inferReadiness(healthHistory as HealthSnapshot[]);
 
-  const focus = inferNextFocus(trainingSplit, workoutHistory as WorkoutHistoryEntry[], request.desiredFocus);
+  const focus = inferNextFocus(
+    trainingSplit,
+    workoutHistory as WorkoutHistoryEntry[],
+    request.desiredFocus,
+    plannerContext,
+    readiness
+  );
   const muscles = focusToMuscles(focus);
   const selectedExercises = selectExercises({
     focus,
@@ -362,9 +535,9 @@ export async function generateOptimizedWorkoutPlan(request: WorkoutOptimizationR
     preferredExercises: request.preferredExercises || [],
     avoidExercises: request.avoidExercises || [],
     availableTime,
+    plannerContext,
   });
 
-  const readiness = inferReadiness(healthHistory as HealthSnapshot[]);
   const goalMode = inferGoalMode(goals);
   const keyLifts = selectedExercises.map((exercise) =>
     prescriptionForExercise(
@@ -377,7 +550,8 @@ export async function generateOptimizedWorkoutPlan(request: WorkoutOptimizationR
       goalMode,
       readiness,
       !!progressiveOverload,
-      request.intensity ?? null
+      request.intensity ?? null,
+      plannerContext
     )
   );
 
@@ -386,18 +560,30 @@ export async function generateOptimizedWorkoutPlan(request: WorkoutOptimizationR
     .map((observation) => observation.observation)
     .filter(Boolean) as string[];
 
+  const splitTemplate = focusToPatternTemplate(focus);
+  const selectedPatterns = keyLifts.map((lift) => inferMovementPatternFromName(lift.exercise));
+
   return {
     splitType: focus,
     workoutName: focus,
     keyLifts,
     adjustments: [
       `Optimized around ${focus.toLowerCase()} with a ${availableTime}-minute session cap.`,
+      `Template emphasis: ${splitTemplate.slice(0, keyLifts.length <= 4 ? 3 : 4).join(', ')}.`,
+      plannerContext.returningFromLayoff
+        ? `Returning after ${plannerContext.daysSinceLastWorkout} days off, so volume and loading were tapered.`
+        : plannerContext.daysSinceLastWorkout != null
+          ? `Last session was ${plannerContext.daysSinceLastWorkout} day${plannerContext.daysSinceLastWorkout === 1 ? '' : 's'} ago (${plannerContext.lastWorkoutName || 'recent workout'}).`
+          : '',
       readiness < 60 ? 'Readiness is suppressed, so loading was moderated to prioritize quality.' : 'Readiness supports a normal progression target today.',
+      selectedPatterns.length > 0 ? `Selected movement patterns: ${selectedPatterns.slice(0, 5).join(', ')}.` : '',
       ...observationSignals.slice(0, 2),
       ...(request.instruction ? [`User request applied: ${request.instruction}`] : []),
     ].slice(0, 4),
     coachNotes:
-      readiness < 60
+      plannerContext.returningFromLayoff
+        ? `This is a re-entry ${focus.toLowerCase()} session. Keep everything clean, stop before grinders, and treat it as calibration for the next harder day.`
+        : readiness < 60
         ? `This is a lower-fatigue ${focus.toLowerCase()} session. Keep 1-2 reps in reserve on compounds and move efficiently through accessories.`
         : `This ${focus.toLowerCase()} session pushes your highest-value lifts first, then uses accessories to round out volume without wasting time.`,
     algorithm: 'fitforge-fitbod-style-v1',

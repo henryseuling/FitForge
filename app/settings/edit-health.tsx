@@ -20,15 +20,11 @@ import { useWorkoutStore } from '@/stores/useWorkoutStore';
 export default function EditHealthScreen() {
   const user = useUserStore();
   const [appleHealthLoading, setAppleHealthLoading] = useState(false);
-  const [ouraRingLoading, setOuraRingLoading] = useState(false);
   const [syncing, setSyncing] = useState(false);
   const { readinessScore, hrv, restingHR, sleepScore, recoveryScore } = useWorkoutStore();
 
   const appleHealthConnected =
     user.integrations?.find((i) => i.name === 'Apple Health')?.connected ?? false;
-  const ouraRingConnected =
-    user.integrations?.find((i) => i.name === 'Oura Ring')?.connected ?? false;
-
   const handleAppleHealthConnect = async () => {
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
     if (Platform.OS !== 'ios') {
@@ -99,51 +95,6 @@ export default function EditHealthScreen() {
     } finally {
       setAppleHealthLoading(false);
     }
-  };
-
-  const handleOuraRingConnect = async () => {
-    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
-    setOuraRingLoading(true);
-
-    setTimeout(() => {
-      Alert.alert(
-        ouraRingConnected ? 'Disconnect Oura Ring?' : 'Connect Oura Ring?',
-        ouraRingConnected
-          ? 'Your Oura Ring data will no longer sync with FitForge.'
-          : "Connect your Oura Ring account to sync sleep, activity, and readiness data. You'll be redirected to Oura to authenticate.",
-        [
-          { text: 'Cancel', style: 'cancel', onPress: () => setOuraRingLoading(false) },
-          {
-            text: ouraRingConnected ? 'Disconnect' : 'Connect',
-            style: ouraRingConnected ? 'destructive' : 'default',
-            onPress: () => {
-              // Update integrations
-              const updated = user.integrations?.map((i) =>
-                i.name === 'Oura Ring'
-                  ? { ...i, connected: !ouraRingConnected }
-                  : i
-              ) ?? [];
-
-              useUserStore.getState().updateProfile({
-                integrations: updated,
-              });
-
-              Haptics.notificationAsync(
-                Haptics.NotificationFeedbackType.Success
-              );
-              setOuraRingLoading(false);
-
-              Alert.alert(
-                'Success',
-                ouraRingConnected
-                  ? 'Oura Ring disconnected.'
-                  : 'Oura Ring connected! Sleep and activity data will sync automatically.'
-              );
-            },
-          },
-        ]
-      );
-    }, 600);
   };
 
   const handleSync = async () => {
@@ -704,19 +655,19 @@ export default function EditHealthScreen() {
           <FieldLabel text="Latest recovery metrics" />
           <View style={{ gap: 6 }}>
             <Text style={{ fontFamily: 'DMSans', fontSize: 13, color: colors.textSecondary }}>
-              Readiness: <Text style={{ color: colors.textPrimary }}>{readinessScore || '--'}</Text>
+              Readiness: <Text style={{ color: colors.textPrimary }}>{readinessScore ?? '--'}</Text>
             </Text>
             <Text style={{ fontFamily: 'DMSans', fontSize: 13, color: colors.textSecondary }}>
-              HRV: <Text style={{ color: colors.textPrimary }}>{hrv || '--'}</Text>
+              HRV: <Text style={{ color: colors.textPrimary }}>{hrv ?? '--'}</Text>
             </Text>
             <Text style={{ fontFamily: 'DMSans', fontSize: 13, color: colors.textSecondary }}>
-              Resting HR: <Text style={{ color: colors.textPrimary }}>{restingHR || '--'}</Text>
+              Resting HR: <Text style={{ color: colors.textPrimary }}>{restingHR ?? '--'}</Text>
             </Text>
             <Text style={{ fontFamily: 'DMSans', fontSize: 13, color: colors.textSecondary }}>
-              Sleep score: <Text style={{ color: colors.textPrimary }}>{sleepScore || '--'}</Text>
+              Sleep score: <Text style={{ color: colors.textPrimary }}>{sleepScore ?? '--'}</Text>
             </Text>
             <Text style={{ fontFamily: 'DMSans', fontSize: 13, color: colors.textSecondary }}>
-              Recovery score: <Text style={{ color: colors.textPrimary }}>{recoveryScore || '--'}</Text>
+              Recovery score: <Text style={{ color: colors.textPrimary }}>{recoveryScore ?? 'Estimated only after Apple Health sync'}</Text>
             </Text>
           </View>
         </View>
@@ -738,21 +689,29 @@ export default function EditHealthScreen() {
           <IntegrationCard
             icon={appleHealthIcon}
             title="Apple Health"
-            description="Sync workouts, steps, and health metrics"
+            description="Primary source for readiness, recovery, sleep, and heart metrics"
             connected={appleHealthConnected}
             onConnect={handleAppleHealthConnect}
             loading={appleHealthLoading}
           />
 
-          {/* Oura Ring Integration */}
-          <IntegrationCard
-            icon={ouraRingIcon}
-            title="Oura Ring"
-            description="Track sleep, activity, and readiness"
-            connected={ouraRingConnected}
-            onConnect={handleOuraRingConnect}
-            loading={ouraRingLoading}
-          />
+          <View
+            style={{
+              borderRadius: 12,
+              backgroundColor: colors.elevated,
+              borderWidth: 1,
+              borderColor: 'rgba(255,255,255,0.04)',
+              padding: 14,
+              gap: 6,
+            }}
+          >
+            <Text style={{ fontFamily: 'DMSans-SemiBold', fontSize: 14, color: colors.textPrimary }}>
+              Oura Ring
+            </Text>
+            <Text style={{ fontFamily: 'DMSans', fontSize: 12, color: colors.textSecondary, lineHeight: 18 }}>
+              Apple Health is the active recovery source for FitForge. Oura is not part of the live recovery pipeline right now.
+            </Text>
+          </View>
         </View>
 
         {/* Permissions Info */}
@@ -867,7 +826,7 @@ export default function EditHealthScreen() {
           </View>
         </View>
 
-        {/* Oura Ring Info */}
+        {/* Recovery Source Info */}
         <View
           style={{
             backgroundColor: colors.elevated,
@@ -887,7 +846,7 @@ export default function EditHealthScreen() {
               letterSpacing: 0.7,
             }}
           >
-            About Oura Ring
+            Recovery Source
           </Text>
 
           <Text
@@ -898,7 +857,7 @@ export default function EditHealthScreen() {
               lineHeight: 18,
             }}
           >
-            Oura Ring is a wearable device that tracks your sleep patterns, daily activity, and overall readiness. By connecting your Oura Ring account, FitForge can use this data to optimize your training recommendations and recovery strategies.
+            FitForge currently uses Apple Health as the primary recovery source. Readiness, recovery, HRV, resting heart rate, and sleep context should come from HealthKit once permission and syncing are working.
           </Text>
 
           <Text
@@ -909,7 +868,7 @@ export default function EditHealthScreen() {
               marginTop: 4,
             }}
           >
-            You need an Oura Ring account to use this integration.
+            Oura is not part of the live recovery pipeline right now.
           </Text>
         </View>
 
@@ -975,43 +934,15 @@ export default function EditHealthScreen() {
               </View>
             </View>
 
-            <View
+            <Text
               style={{
-                flexDirection: 'row',
-                justifyContent: 'space-between',
-                alignItems: 'center',
+                fontFamily: 'DMSans',
+                fontSize: 13,
+                color: colors.textSecondary,
               }}
             >
-              <Text
-                style={{
-                  fontFamily: 'DMSans',
-                  fontSize: 13,
-                  color: colors.textSecondary,
-                }}
-              >
-                Oura Ring:
-              </Text>
-              <View
-                style={{
-                  paddingVertical: 3,
-                  paddingHorizontal: 8,
-                  borderRadius: 6,
-                  backgroundColor: ouraRingConnected
-                    ? 'rgba(52, 211, 153, 0.12)'
-                    : 'rgba(82, 82, 107, 0.2)',
-                }}
-              >
-                <Text
-                  style={{
-                    fontFamily: 'DMSans-SemiBold',
-                    fontSize: 11,
-                    color: ouraRingConnected ? colors.success : colors.textTertiary,
-                  }}
-                >
-                  {ouraRingConnected ? 'Connected' : 'Disconnected'}
-                </Text>
-              </View>
-            </View>
+              Apple Health is the only active recovery data source in this build.
+            </Text>
           </View>
         </View>
       </ScrollView>

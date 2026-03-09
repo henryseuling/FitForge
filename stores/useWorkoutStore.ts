@@ -65,11 +65,11 @@ export interface SessionStats {
 
 interface WorkoutState {
   // Readiness
-  readinessScore: number;
-  hrv: number;
-  restingHR: number;
-  sleepScore: number;
-  recoveryScore: number;
+  readinessScore: number | null;
+  hrv: number | null;
+  restingHR: number | null;
+  sleepScore: number | null;
+  recoveryScore: number | null;
 
   // Current workout
   workoutName: string;
@@ -95,7 +95,7 @@ interface WorkoutState {
   addRestTime: (seconds: number) => void;
   decrementRestTimer: () => void;
   setActiveExercise: (index: number) => void;
-  updateReadiness: (data: { score: number; hrv: number; restingHR: number; sleepScore: number; recoveryScore: number }) => void;
+  updateReadiness: (data: { score: number | null; hrv: number | null; restingHR: number | null; sleepScore: number | null; recoveryScore: number | null }) => void;
   startWorkout: () => Promise<void>;
   loadWorkout: () => Promise<void>;
   hydrateUpcomingWorkout: () => Promise<boolean>;
@@ -149,11 +149,11 @@ function defaultExercise(partial: Partial<Exercise> & { id: string; name: string
 }
 
 const INITIAL_STATE = {
-  readinessScore: 0,
-  hrv: 0,
-  restingHR: 0,
-  sleepScore: 0,
-  recoveryScore: 0,
+  readinessScore: null as number | null,
+  hrv: null as number | null,
+  restingHR: null as number | null,
+  sleepScore: null as number | null,
+  recoveryScore: null as number | null,
 
   workoutName: '',
   dayNumber: 0,
