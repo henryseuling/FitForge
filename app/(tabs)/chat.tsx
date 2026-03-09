@@ -1,8 +1,9 @@
 import React, { useState, useRef, useMemo } from 'react';
-import { ScrollView, View, Text, TextInput, Pressable, KeyboardAvoidingView, Platform, Keyboard, Animated } from 'react-native';
+import { ScrollView, View, Text, TextInput, Pressable, KeyboardAvoidingView, Platform, Keyboard, Animated, StyleSheet } from 'react-native';
 import * as Haptics from 'expo-haptics';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { router } from 'expo-router';
+import Markdown from 'react-native-markdown-display';
 import { colors } from '@/lib/theme';
 import { useChatStore } from '@/stores/useChatStore';
 import { useNutritionStore } from '@/stores/useNutritionStore';
@@ -28,6 +29,33 @@ function formatDateSeparator(dateStr: string): string {
   if (dateStr === yesterdayStr) return 'Yesterday';
   return new Date(dateStr + 'T00:00:00').toLocaleDateString('en-US', { month: 'long', day: 'numeric' });
 }
+
+// ── Markdown styles for assistant messages ───────────────────────
+
+const mdStyles = StyleSheet.create({
+  body: { fontFamily: 'DMSans', fontSize: 16, lineHeight: 28, color: colors.textPrimary },
+  heading1: { fontFamily: 'DMSans-Bold', fontSize: 22, lineHeight: 30, color: colors.textPrimary, marginTop: 16, marginBottom: 8 },
+  heading2: { fontFamily: 'DMSans-Bold', fontSize: 19, lineHeight: 26, color: colors.textPrimary, marginTop: 14, marginBottom: 6 },
+  heading3: { fontFamily: 'DMSans-SemiBold', fontSize: 17, lineHeight: 24, color: colors.textPrimary, marginTop: 12, marginBottom: 4 },
+  paragraph: { marginTop: 0, marginBottom: 8 },
+  strong: { fontFamily: 'DMSans-Bold', color: colors.textPrimary },
+  em: { fontFamily: 'DMSans', fontStyle: 'italic' as const },
+  bullet_list: { marginVertical: 4 },
+  ordered_list: { marginVertical: 4 },
+  list_item: { marginVertical: 2, flexDirection: 'row' as const },
+  bullet_list_icon: { fontFamily: 'DMSans-Bold', fontSize: 16, lineHeight: 28, color: colors.primary, marginRight: 8 },
+  ordered_list_icon: { fontFamily: 'DMSans-SemiBold', fontSize: 14, lineHeight: 28, color: colors.primary, marginRight: 8 },
+  code_inline: { fontFamily: 'JetBrainsMono-Bold', fontSize: 13, color: colors.primary, backgroundColor: 'rgba(232, 168, 56, 0.1)', paddingHorizontal: 5, paddingVertical: 1, borderRadius: 4 },
+  fence: { fontFamily: 'JetBrainsMono-Bold', fontSize: 13, lineHeight: 20, color: colors.textPrimary, backgroundColor: colors.surface, padding: 12, borderRadius: 10, marginVertical: 8, borderWidth: 1, borderColor: 'rgba(255,255,255,0.06)' },
+  code_block: { fontFamily: 'JetBrainsMono-Bold', fontSize: 13, lineHeight: 20, color: colors.textPrimary, backgroundColor: colors.surface, padding: 12, borderRadius: 10, marginVertical: 8 },
+  blockquote: { backgroundColor: 'rgba(232, 168, 56, 0.06)', borderLeftWidth: 3, borderLeftColor: colors.primary, paddingLeft: 12, paddingVertical: 4, marginVertical: 8, borderRadius: 4 },
+  hr: { backgroundColor: 'rgba(255,255,255,0.06)', height: 1, marginVertical: 12 },
+  link: { color: colors.primary, textDecorationLine: 'underline' as const },
+  table: { borderWidth: 1, borderColor: 'rgba(255,255,255,0.06)', borderRadius: 8, marginVertical: 8 },
+  thead: { backgroundColor: colors.surface },
+  th: { fontFamily: 'DMSans-SemiBold', fontSize: 13, color: colors.textPrimary, padding: 8, borderWidth: 0.5, borderColor: 'rgba(255,255,255,0.06)' },
+  td: { fontFamily: 'DMSans', fontSize: 13, color: colors.textSecondary, padding: 8, borderWidth: 0.5, borderColor: 'rgba(255,255,255,0.06)' },
+});
 
 // ── Components ───────────────────────────────────────────────────
 
@@ -62,7 +90,11 @@ const MessageBubble = React.memo(function MessageBubble({ message }: { message: 
         borderLeftWidth: isUser ? 1 : 0,
         borderLeftColor: isUser ? 'rgba(232, 168, 56, 0.12)' : 'transparent',
       }}>
-        <Text style={{ fontFamily: 'DMSans', fontSize: isUser ? 14 : 16, lineHeight: isUser ? 21 : 28, color: colors.textPrimary }}>{message.content}</Text>
+        {isUser ? (
+          <Text style={{ fontFamily: 'DMSans', fontSize: 14, lineHeight: 21, color: colors.textPrimary }}>{message.content}</Text>
+        ) : (
+          <Markdown style={mdStyles}>{message.content}</Markdown>
+        )}
       </View>
     </View>
   );
