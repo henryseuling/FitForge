@@ -41,3 +41,11 @@ yarn-error.*
 # generated native folders
 /ios
 /android
+
+# Working artifacts
+CLAUDE_CODE_PROMPT.md
+GOALS_PROMPT.md
+CLAUDE_COWORK_HANDOFF.md
+DEPLOYMENT.md
+*.tar.gz
+.claude/
